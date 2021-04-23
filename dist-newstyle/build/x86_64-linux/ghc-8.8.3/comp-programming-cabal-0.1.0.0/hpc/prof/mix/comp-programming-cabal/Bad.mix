@@ -1,0 +1,1 @@
+Mix "app/Main.hs" 2021-04-18 07:58:46.9378019 UTC 2159621201 8 [(15:5-15:10,ExpBox False),(15:5-15:10,TopLevelBox ["pointX"]),(15:13-15:18,ExpBox False),(15:13-15:18,TopLevelBox ["pointY"]),(16:5-16:13,ExpBox False),(16:5-16:13,TopLevelBox ["pointName"]),(18:13-18:16,TopLevelBox ["showsPrec"])]

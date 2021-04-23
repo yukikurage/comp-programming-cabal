@@ -13,6 +13,11 @@ license:            NONE
 author:             yukikurage
 maintainer:         yukikurage.music@gmail.com
 
+common shared-properties
+  default-language: Haskell2010
+  build-depends: base, containers, primitive, vector-algorithms, vector, bytestring, array, heap, attoparsec
+  ghc-options:      -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -Wmissing-import-lists -Wcompat
+
 -- A copyright notice.
 -- copyright:
 -- category:
@@ -21,6 +26,8 @@ extra-source-files:
     README.md
 
 library
+    import:              shared-properties
+    -- cabal-fmt: expand src
     exposed-modules:  MyLib
 
     -- Modules included in this library but not exported.
@@ -28,28 +35,24 @@ library
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>=4.13.0.0
     hs-source-dirs:   src
-    default-language: Haskell2010
 
 executable comp-programming-cabal
-    main-is:          Main.hs
+    import:              shared-properties
+    main-is: ModIntTest.hs
+    --main-is: CADDi18/D.hs
 
     -- Modules included in this executable, other than Main.
     -- other-modules:
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:
-        base ^>=4.13.0.0,
-        comp-programming-cabal
-
-    hs-source-dirs:   app
-    default-language: Haskell2010
+    build-depends:  comp-programming-cabal
+    hs-source-dirs: app
+    --hs-source-dirs: problems
 
 test-suite comp-programming-cabal-test
-    default-language: Haskell2010
+    import:              shared-properties
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          MyLibTest.hs
-    build-depends:    base ^>=4.13.0.0
