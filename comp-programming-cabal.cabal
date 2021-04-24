@@ -40,7 +40,7 @@ library
 executable comp-programming-cabal
     import:              shared-properties
     --main-is: ModIntTest.hs
-    main-is: ABC199/A.hs
+    main-is: ABC199/C_Shorts.hs
 
     -- Modules included in this executable, other than Main.
     -- other-modules:

@@ -18,6 +18,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 module Main where
 
+
 import           Control.Monad
 import           Control.Monad.Primitive
 import           Control.Monad.ST
@@ -61,6 +62,8 @@ import           System.IO
 
 main :: IO ()
 main = do
+  [a, b, c] <- get @[Int]
+  putStrLn $ if a ^ 2 + b ^ 2 < c ^ 2 then "Yes" else "No"
   return ()
 
 -------------
