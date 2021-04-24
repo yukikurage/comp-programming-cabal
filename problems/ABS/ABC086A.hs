@@ -1,0 +1,1 @@
+main=getLine>>=(\x->putStrLn $ if odd x then "Odd" else "Even").product.map read.words
