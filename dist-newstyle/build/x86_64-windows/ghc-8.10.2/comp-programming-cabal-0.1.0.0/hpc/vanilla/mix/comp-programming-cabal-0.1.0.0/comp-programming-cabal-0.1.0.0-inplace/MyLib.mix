@@ -1,1 +1,0 @@
-Mix "src\\MyLib.hs" 2021-04-18 09:04:25.3591447 UTC 3883772990 8 [(4:21-4:30,ExpBox False),(4:12-4:30,ExpBox False),(4:1-4:30,TopLevelBox ["someFunc"])]
