@@ -1,3 +1,4 @@
+--NIKKEI
 {-# OPTIONS_GHC -O2 #-}
 {-# OPTIONS_GHC -Wno-missing-import-lists #-}
 {-# OPTIONS_GHC -Wno-unused-imports #-}
@@ -62,8 +63,13 @@ import           System.IO
 main :: IO ()
 main = do
   n <- get @Int
-  xs <- VU.replicateM n (get @Int)
-  putStrLn $ if VU.all even xs then "second" else "first"
+  xs <- getLn @(Int, Int) n
+  let ys = VU.modify
+        do VAM.sortBy \(x, y) (z, w) -> compare (z + w) (x + y)
+        xs
+      aoki = VU.sum . VU.map (\i -> fst $ ys ! i) $ [0, 2 .. n - 1]
+      takahashi = VU.sum . VU.map (\i -> snd $ ys ! i) $ [1, 3 .. n - 1]
+  print $ aoki - takahashi
   return ()
 
 -------------
@@ -83,9 +89,7 @@ getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
 getLn n = VU.replicateM n get
 
 instance Readable Int where
-  fromBS =
-    fst . fromMaybe do error "Error : fromBS @Int"
-      . BS.readInt
+  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
 
 instance Readable Double where
   fromBS = read . BS.unpack
@@ -174,19 +178,15 @@ frommodint :: ModInt p -> Integer
 frommodint (ModInt n) = toInteger n
 
 instance {-# OVERLAPS #-} (KnownNat p) => Ring (ModInt p) where
-  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
-  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
   zero = ModInt 0
-  negate (ModInt x) = ModInt $ - x `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  negate (ModInt x) = ModInt $ - x `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
 
 instance {-# OVERLAPS #-} (KnownNat p) => Field (ModInt p) where
   one = ModInt 1
-  recip n = n ^ (p - 2)
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  recip n = n ^ (p - 2) where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)

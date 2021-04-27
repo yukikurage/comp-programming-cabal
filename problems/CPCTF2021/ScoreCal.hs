@@ -16,17 +16,16 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
+
 module Main where
 
 import           Control.Monad
-import           Control.Monad.Primitive
 import           Control.Monad.ST
 import qualified Data.Array.IArray             as A
 import qualified Data.Array.IO                 as AIO
 import qualified Data.Array.MArray             as AM
 import qualified Data.Array.ST                 as AST
 import qualified Data.Array.Unboxed            as AU
-import qualified Data.Attoparsec.ByteString    as PBS
 import           Data.Bits
 import qualified Data.ByteString.Char8         as BS
 import           Data.Char
@@ -35,7 +34,6 @@ import           Data.IORef
 import           Data.List
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
-import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.STRef
 import qualified Data.Set                      as Set
@@ -61,10 +59,29 @@ import           System.IO
 
 main :: IO ()
 main = do
-  n <- get @Int
-  xs <- VU.replicateM n (get @Int)
-  putStrLn $ if VU.all even xs then "second" else "first"
+  [h, w, x] <- get @[Int]
+  xs' <- V.replicateM h BS.getLine
+  t <- BS.getLine
+  let xs = A.listArray ((0, 0), (h - 1, w - 1)) . map f $ A.range ((0, 0), (h - 1, w - 1)) :: A.Array (Int, Int) Char where
+        f (i, j) = BS.index (xs' ! i) j
+      yo = yoko t xs h w x :: A.Array (Int, Int) Bool
+      ta = tate t xs h w x :: A.Array (Int, Int) Bool
+      allnum = (length . filter id . A.elems $ yo) + (length . filter id . A.elems $ ta)
+      yokaburi = A.listArray ((0, 0), (h - 1, w - 1)) . map f $ A.range ((0, 0), (h - 1, w - 1)) :: A.Array (Int, Int) Int where
+        f (i, j) = if not (yo A.! (i, j)) then 0 else length . filter (\k -> i - k >= 0 && j + k <= w - 1 && ta A.! (i-k,j+k)) $ [0 .. x - 1]
+      takaburi = A.listArray ((0, 0), (h - 1, w - 1)) . map f $ A.range ((0, 0), (h - 1, w - 1)) :: A.Array (Int, Int) Int where
+        f (i, j) = if not (ta A.! (i, j)) then 0 else length . filter (\k -> i + k <= h - 1 && j - k >= 0 && yo A.! (i + k,j - k)) $ [0 .. x - 1]
+      kaburi = VU.modify (VAM.sortBy (flip compare)) $ (VU.fromList . filter (/= 0) . A.elems $ yokaburi) VU.++ (VU.fromList . filter (/= 0) . A.elems $ takaburi)
+      allkaburi = VU.sum kaburi
+      deletenum = fromJust $ VU.findIndex (\c -> c * 2 >= allkaburi) . VU.scanl' (+) 0 $ kaburi
+  print $ allnum - deletenum
   return ()
+
+yoko t xs h w x = A.listArray ((0, 0), (h - 1, w - 1)) . map f $ A.range ((0, 0), (h - 1, w - 1)) where
+  f (i, j) = VU.all (\k -> j + k <= w - 1 && xs A.! (i, j + k) == BS.index t k) [0 .. x - 1]
+tate t xs h w x = A.listArray ((0, 0), (h - 1, w - 1)) . map f $ A.range ((0, 0), (h - 1, w - 1)) where
+  f (i, j) = VU.all (\k -> i + k <= h - 1 && xs A.! (i + k, j) == BS.index t k) [0 .. x - 1]
+
 
 -------------
 -- Library --
@@ -83,9 +100,7 @@ getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
 getLn n = VU.replicateM n get
 
 instance Readable Int where
-  fromBS =
-    fst . fromMaybe do error "Error : fromBS @Int"
-      . BS.readInt
+  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
 
 instance Readable Double where
   fromBS = read . BS.unpack
@@ -174,19 +189,15 @@ frommodint :: ModInt p -> Integer
 frommodint (ModInt n) = toInteger n
 
 instance {-# OVERLAPS #-} (KnownNat p) => Ring (ModInt p) where
-  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
-  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
   zero = ModInt 0
-  negate (ModInt x) = ModInt $ - x `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  negate (ModInt x) = ModInt $ - x `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
 
 instance {-# OVERLAPS #-} (KnownNat p) => Field (ModInt p) where
   one = ModInt 1
-  recip n = n ^ (p - 2)
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  recip n = n ^ (p - 2) where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)

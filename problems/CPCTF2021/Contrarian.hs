@@ -16,17 +16,16 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
+
 module Main where
 
 import           Control.Monad
-import           Control.Monad.Primitive
 import           Control.Monad.ST
 import qualified Data.Array.IArray             as A
 import qualified Data.Array.IO                 as AIO
 import qualified Data.Array.MArray             as AM
 import qualified Data.Array.ST                 as AST
 import qualified Data.Array.Unboxed            as AU
-import qualified Data.Attoparsec.ByteString    as PBS
 import           Data.Bits
 import qualified Data.ByteString.Char8         as BS
 import           Data.Char
@@ -35,7 +34,6 @@ import           Data.IORef
 import           Data.List
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
-import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.STRef
 import qualified Data.Set                      as Set
@@ -61,10 +59,29 @@ import           System.IO
 
 main :: IO ()
 main = do
-  n <- get @Int
-  xs <- VU.replicateM n (get @Int)
-  putStrLn $ if VU.all even xs then "second" else "first"
-  return ()
+    [h, w] <- get @[Int]
+    if
+        | h == 1 && w == 1 -> print -1
+        | odd h            -> VU.forM_ [0 .. h - 1] \i -> putStrLn $ solve i w
+        | odd w -> do
+            putStr . take w $ cycle "ooox"
+            replicateM_ (h - 2) $ putStr . take w $ cycle "ox"
+            putStr . take w $ cycle "oxoo"
+        |otherwise -> print -1
+
+
+
+solve i w = case (i `mod` 4) of
+    0 -> replicate w 'o'
+    3 -> 'o' : replicate (w - 1) 'x'
+    2 -> replicate w 'o'
+    1 ->  replicate (w - 1) 'x' ++ "o"
+
+solve' i = case (i `mod` 4) of
+    0 -> 'o'
+    1 -> 'x'
+    2 -> 'o'
+    3 -> 'o'
 
 -------------
 -- Library --
@@ -83,9 +100,7 @@ getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
 getLn n = VU.replicateM n get
 
 instance Readable Int where
-  fromBS =
-    fst . fromMaybe do error "Error : fromBS @Int"
-      . BS.readInt
+  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
 
 instance Readable Double where
   fromBS = read . BS.unpack
@@ -174,19 +189,15 @@ frommodint :: ModInt p -> Integer
 frommodint (ModInt n) = toInteger n
 
 instance {-# OVERLAPS #-} (KnownNat p) => Ring (ModInt p) where
-  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
-  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
   zero = ModInt 0
-  negate (ModInt x) = ModInt $ - x `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  negate (ModInt x) = ModInt $ - x `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
 
 instance {-# OVERLAPS #-} (KnownNat p) => Field (ModInt p) where
   one = ModInt 1
-  recip n = n ^ (p - 2)
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  recip n = n ^ (p - 2) where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)

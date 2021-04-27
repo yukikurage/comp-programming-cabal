@@ -26,7 +26,6 @@ import qualified Data.Array.IO                 as AIO
 import qualified Data.Array.MArray             as AM
 import qualified Data.Array.ST                 as AST
 import qualified Data.Array.Unboxed            as AU
-import qualified Data.Attoparsec.ByteString    as PBS
 import           Data.Bits
 import qualified Data.ByteString.Char8         as BS
 import           Data.Char
@@ -38,6 +37,7 @@ import           Data.Maybe
 import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.STRef
+import           Data.Sequence                 as Seq
 import qualified Data.Set                      as Set
 import qualified Data.Vector                   as V
 import qualified Data.Vector.Algorithms.Merge  as VAM
@@ -62,9 +62,26 @@ import           System.IO
 main :: IO ()
 main = do
   n <- get @Int
-  xs <- VU.replicateM n (get @Int)
-  putStrLn $ if VU.all even xs then "second" else "first"
-  return ()
+  col <- get @ (VU.Vector Int)
+  edges <- getLn @(Int, Int) $ n - 1
+  graph <- do
+    v <- VM.replicate n []
+    VU.forM_ edges \(i, j) -> VM.modify v ((i - 1) :) (j - 1) >> VM.modify v ((j - 1) :) (i - 1)
+    V.freeze v
+  cnt <- VUM.replicate (10 ^ 5 + 1) (0 :: Int)
+  isGood <- VUM.replicate n False
+  let f :: Int -> Int -> IO ()
+      f now bef = do
+        m <- VUM.read cnt $ col ! now
+        when (m == 0) $ VUM.write isGood now True
+        VUM.modify cnt (+1) $ col ! now
+        forM_ (graph ! now) \aft -> do
+          when (aft /= bef) do
+            f aft now
+            VUM.modify cnt (+ -1) $ col ! aft
+  f 0 -1
+  res <- VU.freeze isGood
+  VU.forM_ (VU.filter (res !) [0 .. n - 1]) $ print . (+ 1)
 
 -------------
 -- Library --
@@ -83,9 +100,7 @@ getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
 getLn n = VU.replicateM n get
 
 instance Readable Int where
-  fromBS =
-    fst . fromMaybe do error "Error : fromBS @Int"
-      . BS.readInt
+  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
 
 instance Readable Double where
   fromBS = read . BS.unpack
@@ -174,19 +189,15 @@ frommodint :: ModInt p -> Integer
 frommodint (ModInt n) = toInteger n
 
 instance {-# OVERLAPS #-} (KnownNat p) => Ring (ModInt p) where
-  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
-  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
   zero = ModInt 0
-  negate (ModInt x) = ModInt $ - x `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  negate (ModInt x) = ModInt $ - x `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
 
 instance {-# OVERLAPS #-} (KnownNat p) => Field (ModInt p) where
   one = ModInt 1
-  recip n = n ^ (p - 2)
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  recip n = n ^ (p - 2) where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)

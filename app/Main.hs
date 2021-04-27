@@ -1,7 +1,4 @@
 {-# OPTIONS_GHC -O2 #-}
-{-# OPTIONS_GHC -Wno-missing-import-lists #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 {-# LANGUAGE BlockArguments       #-}
 {-# LANGUAGE DataKinds            #-}
@@ -26,7 +23,6 @@ import qualified Data.Array.IO                 as AIO
 import qualified Data.Array.MArray             as AM
 import qualified Data.Array.ST                 as AST
 import qualified Data.Array.Unboxed            as AU
-import qualified Data.Attoparsec.ByteString    as PBS
 import           Data.Bits
 import qualified Data.ByteString.Char8         as BS
 import           Data.Char
@@ -38,6 +34,7 @@ import           Data.Maybe
 import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.STRef
+import           Data.Sequence                 as Seq
 import qualified Data.Set                      as Set
 import qualified Data.Vector                   as V
 import qualified Data.Vector.Algorithms.Merge  as VAM
@@ -50,10 +47,9 @@ import qualified Data.Vector.Unboxed           as VU
 import qualified Data.Vector.Unboxed.Mutable   as VUM
 import           Debug.Trace
 import           GHC.TypeNats
-import           Prelude                       hiding (negate, recip, (*), (+),
-                                                (-), (/), (^), (^^))
+import           Prelude                       hiding (negate, print, recip,
+                                                (*), (+), (-), (/), (^), (^^))
 import qualified Prelude
-import           System.IO
 
 ----------
 -- Main --
@@ -67,43 +63,48 @@ main = do
 -- Library --
 -------------
 
-printF :: Show a => a -> IO ()
-printF = putStr . show
+print :: ShowBS a => a -> IO ()
+print = BS.putStrLn . showBS
 
-class Readable a where
-  fromBS :: BS.ByteString -> a
+printF :: ShowBS a => a -> IO ()
+printF = BS.putStr . showBS
 
-get :: Readable a => IO a
-get = fromBS <$> BS.getLine
+class ReadBS a where
+  readBS :: BS.ByteString -> a
+-- ^ readBS . showBS == showBS . readBS == id
 
-getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
-getLn n = VU.replicateM n get
+class ShowBS a where
+  showBS :: a -> BS.ByteString
+-- ^ readBS . showBS == showBS . readBS == id
 
-instance Readable Int where
-  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
+instance (Read a) => ReadBS a where
+  readBS = read . BS.unpack
 
-instance Readable Double where
-  fromBS = read . BS.unpack
+instance (Show a) => ShowBS a where
+  showBS =　BS.pack . show
 
-instance KnownNat p => Readable (ModInt p) where
-  fromBS = modint . fromBS
+-- こうした方がStringを経由しないので高速？
+instance {-# OVERLAPS #-} ReadBS Int where
+  readBS s = case BS.readInt s of
+    Just (x, _) -> x
+    Nothing     -> error "readBS :: ByteString -> Int"
 
-instance (Readable a, Readable b) => Readable (a, b) where
-  fromBS bs = (fromBS x0, fromBS x1) where
-    [x0, x1] = BS.split ' ' bs
+instance {-# OVERLAPS #-} (ReadBS a, VG.Vector v a) => ReadBS (v a) where
+  readBS s = VG.fromList . map readBS . BS.words $ s
 
-instance (Readable a, Readable b, Readable c) => Readable (a, b, c) where
-  fromBS bs = (fromBS x0, fromBS x1, fromBS x2) where
-    [x0, x1, x2] = BS.split ' ' bs
+instance {-# OVERLAPS #-} (Show a, VG.Vector v a) => ShowBS (v a) where
+  showBS v
+    | VG.null v = ""
+    | otherwise = BS.concat $ [f i | i <- [0 .. 2 * (VG.length v - 1)]] where
+      f i
+        | odd i = " "
+        | otherwise = showBS $ v ! (i `div` 2)
 
-instance (Readable a, VU.Unbox a) => Readable (VU.Vector a) where
-  fromBS = VU.fromList . map fromBS . BS.split ' '
+getLn :: (ReadBS a, VG.Vector v a) => Int -> IO (v a)
+getLn n = VG.replicateM n get
 
-instance (Readable a) => Readable (V.Vector a) where
-  fromBS = V.fromList . map fromBS . BS.split ' '
-
-instance (Readable a) => Readable [a] where
-  fromBS = map fromBS . BS.split ' '
+get :: ReadBS a => IO a
+get = readBS <$> BS.getLine
 
 class Ring a where
   (+), (-) :: a -> a -> a

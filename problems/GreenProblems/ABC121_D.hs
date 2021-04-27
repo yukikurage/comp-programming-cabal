@@ -61,10 +61,16 @@ import           System.IO
 
 main :: IO ()
 main = do
-  n <- get @Int
-  xs <- VU.replicateM n (get @Int)
-  putStrLn $ if VU.all even xs then "second" else "first"
+  [a, b] <- get @[Int]
+  print $ VU.foldr' (\x acc -> acc * 2 + x) 0 . VU.map (\i -> (count b i - count (a - 1) i) `mod` 2) $ [0 .. 50]
   return ()
+
+--2^nの位の1の数
+count :: Int -> Int -> Int
+count a n = m * d + if b <= m then 0 else b - m where
+  m = shiftL 1 n
+  d = (a + 1) `div` (m * 2)
+  b = (a + 1) `mod` (m * 2)
 
 -------------
 -- Library --
@@ -83,9 +89,7 @@ getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
 getLn n = VU.replicateM n get
 
 instance Readable Int where
-  fromBS =
-    fst . fromMaybe do error "Error : fromBS @Int"
-      . BS.readInt
+  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
 
 instance Readable Double where
   fromBS = read . BS.unpack
@@ -174,19 +178,15 @@ frommodint :: ModInt p -> Integer
 frommodint (ModInt n) = toInteger n
 
 instance {-# OVERLAPS #-} (KnownNat p) => Ring (ModInt p) where
-  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
-  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
   zero = ModInt 0
-  negate (ModInt x) = ModInt $ - x `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  negate (ModInt x) = ModInt $ - x `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
 
 instance {-# OVERLAPS #-} (KnownNat p) => Field (ModInt p) where
   one = ModInt 1
-  recip n = n ^ (p - 2)
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  recip n = n ^ (p - 2) where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)

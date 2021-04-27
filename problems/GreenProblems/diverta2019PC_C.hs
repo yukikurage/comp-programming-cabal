@@ -62,9 +62,16 @@ import           System.IO
 main :: IO ()
 main = do
   n <- get @Int
-  xs <- VU.replicateM n (get @Int)
-  putStrLn $ if VU.all even xs then "second" else "first"
+  xs <- V.replicateM n BS.getLine
+  let allsum = V.sum . V.map count $ xs
+      fstB = V.length . V.filter (\s -> BS.head s == 'B') $ xs
+      lstA = V.length . V.filter (\s -> BS.last s == 'A') $ xs
+      nonpair = V.length . V.filter (\s -> BS.head s /= 'B' && BS.last s /= 'A') $ xs
+      maxnew = min fstB lstA
+  print $ if maxnew /= 0 && maxnew == n - nonpair then allsum + maxnew - 1 else allsum + maxnew
   return ()
+
+count s = VU.length . VU.filter (\i -> BS.index s i == 'A' && BS.index s (i + 1) == 'B') $ [0 .. BS.length s - 2]
 
 -------------
 -- Library --
@@ -79,13 +86,11 @@ class Readable a where
 get :: Readable a => IO a
 get = fromBS <$> BS.getLine
 
-getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
-getLn n = VU.replicateM n get
+getLn :: (VG.Vector v a, Readable a) => Int -> IO (v a)
+getLn n = VG.replicateM n get
 
 instance Readable Int where
-  fromBS =
-    fst . fromMaybe do error "Error : fromBS @Int"
-      . BS.readInt
+  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
 
 instance Readable Double where
   fromBS = read . BS.unpack
@@ -174,19 +179,15 @@ frommodint :: ModInt p -> Integer
 frommodint (ModInt n) = toInteger n
 
 instance {-# OVERLAPS #-} (KnownNat p) => Ring (ModInt p) where
-  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
-  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  (ModInt x) * (ModInt y) = ModInt $ (x * y) `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
   zero = ModInt 0
-  negate (ModInt x) = ModInt $ - x `mod` p
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  negate (ModInt x) = ModInt $ - x `mod` p where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
 
 instance {-# OVERLAPS #-} (KnownNat p) => Field (ModInt p) where
   one = ModInt 1
-  recip n = n ^ (p - 2)
-    where
-      p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+  recip n = n ^ (p - 2) where
+    p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
