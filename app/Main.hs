@@ -317,6 +317,60 @@ comp xs = Comp vals comped where
   vals = VU.uniq . VU.modify VAM.sort $ xs
   comped = ST.runST $ VU.thaw vals >>= \v -> VU.mapM (VAS.binarySearch v) xs
 
+-- | c !> iで小さい方からのindexがiの座標を取得
+(!>) :: VUM.Unbox a => Comp a -> Int -> a
+(Comp vals comped) !> i = vals ! (comped ! i)
+
+uncomp :: VUM.Unbox a => Comp a -> VU.Vector a
+uncomp (Comp vals comped) = VU.map (vals !) comped
+
+getComped :: Comp a -> VU.Vector Int
+getComped (Comp _ comped) = comped
+
+---------------------------------
+-- Disjoint Set Data Structure --
+---------------------------------
+
+data DisjointSet m = DSet
+  {dsParents :: VUM.MVector m Int, dsDepths ::VUM.MVector m Int}
+-- ^ (Parent, Depth)を保存
+
+newDSet :: Prim.PrimMonad m => Int -> m (DisjointSet (Prim.PrimState m))
+newDSet n = DSet <$> VUM.generate n id <*> VUM.replicate n 1
+
+-- | ルートを調べる時につなぎ直す
+root :: Prim.PrimMonad m => DisjointSet (Prim.PrimState m) -> Int -> m Int
+root ds i = VUM.read (dsParents ds) i >>= \p -> if p == i
+  then return i
+  else root ds p >>= \r -> VUM.write (dsParents ds) i r >> return r
+
+union :: Prim.PrimMonad m =>
+  DisjointSet (Prim.PrimState m) -> Int -> Int -> m ()
+union ds i j = do
+  rooti <- root ds i
+  rootj <- root ds j
+  depi <- VUM.read (dsDepths ds) rooti
+  depj <- VUM.read (dsDepths ds) rootj
+  if
+    | depi == depj -> VUM.modify (dsDepths ds) (+ 1) rooti >>
+    VUM.write (dsParents ds) rootj rooti
+    | depi > depj -> VUM.write (dsParents ds) rootj rooti
+    | otherwise  -> VUM.write (dsParents ds) rooti rootj
+
+find :: Prim.PrimMonad m =>
+  DisjointSet (Prim.PrimState m) -> Int -> Int -> m Bool
+find ds i j =  (==) <$> root ds i <*> root ds j
+
+{-
+testDS :: IO ()
+testDS = do
+  ds <- newDSet (10 ^ 5)
+  VU.forM_ [0 .. 10 ^ 5 - 3] \i ->
+    union ds i $ i + 1
+  print . (\x -> if x then "true" :: BS.ByteString else "false") =<<
+    find ds 0 (10^5 - 1)
+-}
+
 ------------
 -- Others --
 ------------
