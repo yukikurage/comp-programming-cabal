@@ -1,7 +1,4 @@
 {-# OPTIONS_GHC -O2 #-}
-{-# OPTIONS_GHC -Wno-missing-import-lists #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 {-# LANGUAGE BlockArguments       #-}
 {-# LANGUAGE DataKinds            #-}
@@ -16,10 +13,10 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
-
 module Main where
 
 import           Control.Monad
+import           Control.Monad.Primitive
 import           Control.Monad.ST
 import qualified Data.Array.IArray             as A
 import qualified Data.Array.IO                 as AIO
@@ -34,8 +31,10 @@ import           Data.IORef
 import           Data.List
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
+import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.STRef
+import qualified Data.Sequence                 as Seq
 import qualified Data.Set                      as Set
 import qualified Data.Vector                   as V
 import qualified Data.Vector.Algorithms.Merge  as VAM
@@ -48,10 +47,9 @@ import qualified Data.Vector.Unboxed           as VU
 import qualified Data.Vector.Unboxed.Mutable   as VUM
 import           Debug.Trace
 import           GHC.TypeNats
-import           Prelude                       hiding (negate, recip, (*), (+),
-                                                (-), (/), (^), (^^))
+import           Prelude                       hiding (negate, print, recip,
+                                                (*), (+), (-), (/), (^), (^^))
 import qualified Prelude
-import           System.IO
 
 ----------
 -- Main --
@@ -59,54 +57,93 @@ import           System.IO
 
 main :: IO ()
 main = do
-    [h, w] <- get @[Int]
-    if
-      | h == 1 && w == 1 -> print -1
-      | w == 1 -> replicateM_ h $ putStrLn "o"
-      | otherwise ->
-        VU.forM_ [0 .. h - 1] \i -> putStrLn (replicate w $ if even i then 'o' else 'x')
+  [n, m] <- get @[Int]
+  xs <- VU.modify VAM.sort <$> get @(VU.Vector Int)
+  ys <- VU.modify (VAM.sortBy (\(_, c1) (_, c2) -> compare c2 c1)) <$> getLn @(Int, Int) m
+  let res = solve xs ys
+  print . VU.sum $ res
 
 -------------
 -- Library --
 -------------
 
-printF :: Show a => a -> IO ()
-printF = putStr . show
+solve xs ys = runST do
+  v <- VU.thaw xs
+  let loop w zs
+        | VU.null zs = return ()
+        | otherwise = do
+          let (b, c) = zs ! 0
+          i <- binarySearchL w c
+          if b <= i then
+            (VU.forM_ [0 .. b - 1] \j -> VUM.write w j c) >> loop (VUM.drop b . VUM.take i $ w) (VU.tail zs) else
+            VU.forM_ [0 .. i - 1] \j -> VUM.write w j c
+  loop v ys
+  VU.freeze v
 
-class Readable a where
-  fromBS :: BS.ByteString -> a
+print :: ShowBS a => a -> IO ()
+print = BS.putStrLn . showBS
 
-get :: Readable a => IO a
-get = fromBS <$> BS.getLine
+printF :: ShowBS a => a -> IO ()
+printF = BS.putStr . showBS
 
-getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
-getLn n = VU.replicateM n get
+class ReadBS a where
+  readBS :: BS.ByteString -> a
+-- ^ readBS . showBS == showBS . readBS == id
 
-instance Readable Int where
-  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
+class ShowBS a where
+  showBS :: a -> BS.ByteString
+-- ^ readBS . showBS == showBS . readBS == id
 
-instance Readable Double where
-  fromBS = read . BS.unpack
+instance (Read a) => ReadBS a where
+  readBS = read . BS.unpack
 
-instance KnownNat p => Readable (ModInt p) where
-  fromBS = modint . fromBS
+instance (Show a) => ShowBS a where
+  showBS =　BS.pack . show
 
-instance (Readable a, Readable b) => Readable (a, b) where
-  fromBS bs = (fromBS x0, fromBS x1) where
-    [x0, x1] = BS.split ' ' bs
+instance {-# OVERLAPS #-} (ReadBS a, ReadBS b) => ReadBS (a, b) where
+  readBS s = (a, b) where
+    [a', b'] = BS.words s
+    a = readBS a'
+    b = readBS b'
 
-instance (Readable a, Readable b, Readable c) => Readable (a, b, c) where
-  fromBS bs = (fromBS x0, fromBS x1, fromBS x2) where
-    [x0, x1, x2] = BS.split ' ' bs
+instance {-# OVERLAPS #-} (ReadBS a, ReadBS b, ReadBS c) => ReadBS (a, b, c) where
+  readBS s = (a, b, c) where
+    [a', b', c'] = BS.words s
+    a = readBS a'
+    b = readBS b'
+    c = readBS c'
 
-instance (Readable a, VU.Unbox a) => Readable (VU.Vector a) where
-  fromBS = VU.fromList . map fromBS . BS.split ' '
+-- こうした方がStringを経由しないので高速？
+instance {-# OVERLAPS #-} ReadBS Int where
+  readBS s = case BS.readInt s of
+    Just (x, _) -> x
+    Nothing     -> error "readBS :: ByteString -> Int"
 
-instance (Readable a) => Readable (V.Vector a) where
-  fromBS = V.fromList . map fromBS . BS.split ' '
+instance {-# OVERLAPS #-} (ReadBS a, VG.Vector v a) => ReadBS (v a) where
+  readBS s = VG.fromList . map readBS . BS.words $ s
 
-instance (Readable a) => Readable [a] where
-  fromBS = map fromBS . BS.split ' '
+instance {-# OVERLAPS #-} ReadBS a => ReadBS [a] where
+  readBS s = map readBS . BS.words $ s
+
+instance {-# OVERLAPS #-} (ShowBS a, VG.Vector v a) => ShowBS (v a) where
+  showBS v
+    | VG.null v = ""
+    | otherwise = BS.concat $ [f i | i <- [0 .. 2 * (VG.length v - 1)]] where
+      f i
+        | odd i = " "
+        | otherwise = showBS $ v ! (i `div` 2)
+
+instance {-# OVERLAPS #-} ShowBS a => ShowBS [a] where
+  showBS xs
+    | null xs = ""
+    | length xs == 1 = showBS . head $ xs
+    | otherwise = showBS (head xs) `BS.append` " " `BS.append` showBS (tail xs)
+
+getLn :: (ReadBS a, VG.Vector v a) => Int -> IO (v a)
+getLn n = VG.replicateM n get
+
+get :: ReadBS a => IO a
+get = readBS <$> BS.getLine
 
 class Ring a where
   (+), (-) :: a -> a -> a

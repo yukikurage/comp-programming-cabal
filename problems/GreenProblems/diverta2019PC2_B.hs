@@ -1,7 +1,4 @@
 {-# OPTIONS_GHC -O2 #-}
-{-# OPTIONS_GHC -Wno-missing-import-lists #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 {-# LANGUAGE BlockArguments       #-}
 {-# LANGUAGE DataKinds            #-}
@@ -16,10 +13,10 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
-
 module Main where
 
 import           Control.Monad
+import           Control.Monad.Primitive
 import           Control.Monad.ST
 import qualified Data.Array.IArray             as A
 import qualified Data.Array.IO                 as AIO
@@ -29,13 +26,16 @@ import qualified Data.Array.Unboxed            as AU
 import           Data.Bits
 import qualified Data.ByteString.Char8         as BS
 import           Data.Char
+import           Data.Graph
 import qualified Data.Heap                     as Heap
 import           Data.IORef
 import           Data.List
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
+import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.STRef
+import qualified Data.Sequence                 as Seq
 import qualified Data.Set                      as Set
 import qualified Data.Vector                   as V
 import qualified Data.Vector.Algorithms.Merge  as VAM
@@ -51,7 +51,6 @@ import           GHC.TypeNats
 import           Prelude                       hiding (negate, recip, (*), (+),
                                                 (-), (/), (^), (^^))
 import qualified Prelude
-import           System.IO
 
 ----------
 -- Main --
@@ -59,12 +58,16 @@ import           System.IO
 
 main :: IO ()
 main = do
-    [h, w] <- get @[Int]
-    if
-      | h == 1 && w == 1 -> print -1
-      | w == 1 -> replicateM_ h $ putStrLn "o"
-      | otherwise ->
-        VU.forM_ [0 .. h - 1] \i -> putStrLn (replicate w $ if even i then 'o' else 'x')
+  n <- get @Int
+  xs <- getLn @(Int, Int) @VU.Vector n
+  cntr <- newIORef cntrEmpty
+  forM_ [(i, j) |i <- [0 .. n - 1], j <- [0 .. n - 1], i /= j] \(i, j) -> do
+    let
+      (x1, y1) = xs ! i
+      (x2, y2) = xs ! j
+    modifyIORef' cntr (<<+ (x1 - x2, y1 - y2))
+  res <- readIORef cntr
+  print $ if n == 1 then 1 else (n -) . maximum . map snd .cntrToList $ res
 
 -------------
 -- Library --
@@ -73,40 +76,42 @@ main = do
 printF :: Show a => a -> IO ()
 printF = putStr . show
 
-class Readable a where
-  fromBS :: BS.ByteString -> a
+class ReadBS a where
+  readBS :: BS.ByteString -> a
 
-get :: Readable a => IO a
-get = fromBS <$> BS.getLine
+instance (ReadBS a, ReadBS b) => ReadBS (a, b) where
+  readBS s = (a, b) where
+    [a', b'] = BS.words s
+    a = readBS a'
+    b = readBS b'
 
-getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
-getLn n = VU.replicateM n get
+instance (ReadBS a, ReadBS b, ReadBS c) => ReadBS (a, b, c) where
+  readBS s = (a, b, c) where
+    [a', b', c'] = BS.words s
+    a = readBS a'
+    b = readBS b'
+    c = readBS c'
 
-instance Readable Int where
-  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
+-- こうした方がStringを経由しないので高速？
+instance ReadBS Int where
+  readBS s = case BS.readInt s of
+    Just (x, _) -> x
+    Nothing     -> error "readBS :: ByteString -> Int"
 
-instance Readable Double where
-  fromBS = read . BS.unpack
+instance ReadBS Double where
+  readBS = read . BS.unpack
 
-instance KnownNat p => Readable (ModInt p) where
-  fromBS = modint . fromBS
+instance {-# OVERLAPS #-} (ReadBS a, VG.Vector v a) => ReadBS (v a) where
+  readBS s = VG.fromList . map readBS . BS.words $ s
 
-instance (Readable a, Readable b) => Readable (a, b) where
-  fromBS bs = (fromBS x0, fromBS x1) where
-    [x0, x1] = BS.split ' ' bs
+instance {-# OVERLAPS #-} ReadBS a => ReadBS [a] where
+  readBS s = map readBS . BS.words $ s
 
-instance (Readable a, Readable b, Readable c) => Readable (a, b, c) where
-  fromBS bs = (fromBS x0, fromBS x1, fromBS x2) where
-    [x0, x1, x2] = BS.split ' ' bs
+getLn :: (ReadBS a, VG.Vector v a) => Int -> IO (v a)
+getLn n = VG.replicateM n get
 
-instance (Readable a, VU.Unbox a) => Readable (VU.Vector a) where
-  fromBS = VU.fromList . map fromBS . BS.split ' '
-
-instance (Readable a) => Readable (V.Vector a) where
-  fromBS = V.fromList . map fromBS . BS.split ' '
-
-instance (Readable a) => Readable [a] where
-  fromBS = map fromBS . BS.split ' '
+get :: ReadBS a => IO a
+get = readBS <$> BS.getLine
 
 class Ring a where
   (+), (-) :: a -> a -> a
@@ -184,3 +189,22 @@ instance {-# OVERLAPS #-} (KnownNat p) => Field (ModInt p) where
   one = ModInt 1
   recip n = n ^ (p - 2) where
     p = fromInteger . toInteger $ natVal (Proxy :: Proxy p)
+
+newtype Counter a = Counter (Map.Map a Int)
+
+-- | O(log(n))
+(<<+) :: Ord a => Counter a -> a -> Counter a
+(<<+) (Counter cntr) a = Counter next where
+  next = if Map.member a cntr then Map.adjust (+1) a cntr else Map.insert a 1 cntr
+
+-- | O(log(n))
+(<<-) :: Ord a => Counter a -> a -> Counter a
+(<<-) (Counter cntr) a = Counter next where
+  next = Map.update (\i -> if i - 1 == 0 then Nothing else Just (i - 1)) a cntr
+
+-- | O(n)
+cntrToList :: Counter a -> [(a, Int)]
+cntrToList (Counter cntr) = Map.toList cntr
+
+cntrEmpty :: Counter a
+cntrEmpty = Counter $ Map.empty

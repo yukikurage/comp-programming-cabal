@@ -1,7 +1,4 @@
 {-# OPTIONS_GHC -O2 #-}
-{-# OPTIONS_GHC -Wno-missing-import-lists #-}
-{-# OPTIONS_GHC -Wno-unused-imports #-}
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
 {-# LANGUAGE BlockArguments       #-}
 {-# LANGUAGE DataKinds            #-}
@@ -16,10 +13,10 @@
 {-# LANGUAGE TypeApplications     #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE UndecidableInstances #-}
-
 module Main where
 
 import           Control.Monad
+import           Control.Monad.Primitive
 import           Control.Monad.ST
 import qualified Data.Array.IArray             as A
 import qualified Data.Array.IO                 as AIO
@@ -34,8 +31,10 @@ import           Data.IORef
 import           Data.List
 import qualified Data.Map.Strict               as Map
 import           Data.Maybe
+import           Data.Primitive.MutVar
 import           Data.Proxy
 import           Data.STRef
+import qualified Data.Sequence                 as Seq
 import qualified Data.Set                      as Set
 import qualified Data.Vector                   as V
 import qualified Data.Vector.Algorithms.Merge  as VAM
@@ -51,7 +50,6 @@ import           GHC.TypeNats
 import           Prelude                       hiding (negate, recip, (*), (+),
                                                 (-), (/), (^), (^^))
 import qualified Prelude
-import           System.IO
 
 ----------
 -- Main --
@@ -59,12 +57,16 @@ import           System.IO
 
 main :: IO ()
 main = do
-    [h, w] <- get @[Int]
-    if
-      | h == 1 && w == 1 -> print -1
-      | w == 1 -> replicateM_ h $ putStrLn "o"
-      | otherwise ->
-        VU.forM_ [0 .. h - 1] \i -> putStrLn (replicate w $ if even i then 'o' else 'x')
+  s <- BS.getLine
+  print $ solve s 0
+  return ()
+
+solve :: BS.ByteString -> Int -> Int
+solve s i
+  | BS.null s = 0
+  | BS.head s == 'A' = solve (BS.tail s) $ i + 1
+  | BS.take 2 s == "BC" = i + solve (BS.drop 2 s) i
+  | otherwise = solve (BS.tail s) 0
 
 -------------
 -- Library --
@@ -73,40 +75,42 @@ main = do
 printF :: Show a => a -> IO ()
 printF = putStr . show
 
-class Readable a where
-  fromBS :: BS.ByteString -> a
+class ReadBS a where
+  readBS :: BS.ByteString -> a
 
-get :: Readable a => IO a
-get = fromBS <$> BS.getLine
+instance Read a => ReadBS a where
+  readBS = read . BS.unpack
 
-getLn :: (Readable a, VU.Unbox a) => Int -> IO (VU.Vector a)
-getLn n = VU.replicateM n get
+instance {-# OVERLAPS #-} (ReadBS a, ReadBS b) => ReadBS (a, b) where
+  readBS s = (a, b) where
+    [a', b'] = BS.words s
+    a = readBS a'
+    b = readBS b'
 
-instance Readable Int where
-  fromBS = fst . fromMaybe (error "Error : fromBS @Int") . BS.readInt
+instance {-# OVERLAPS #-} (ReadBS a, ReadBS b, ReadBS c) => ReadBS (a, b, c) where
+  readBS s = (a, b, c) where
+    [a', b', c'] = BS.words s
+    a = readBS a'
+    b = readBS b'
+    c = readBS c'
 
-instance Readable Double where
-  fromBS = read . BS.unpack
+-- こうした方がStringを経由しないので高速？
+instance ReadBS Int where
+  readBS s = case BS.readInt s of
+    Just (x, _) -> x
+    Nothing     -> error "readBS :: ByteString -> Int"
 
-instance KnownNat p => Readable (ModInt p) where
-  fromBS = modint . fromBS
+instance (ReadBS a, VG.Vector v a) => ReadBS (v a) where
+  readBS s = VG.fromList . map readBS . BS.words $ s
 
-instance (Readable a, Readable b) => Readable (a, b) where
-  fromBS bs = (fromBS x0, fromBS x1) where
-    [x0, x1] = BS.split ' ' bs
+instance ReadBS a => ReadBS [a] where
+  readBS s = map readBS . BS.words $ s
 
-instance (Readable a, Readable b, Readable c) => Readable (a, b, c) where
-  fromBS bs = (fromBS x0, fromBS x1, fromBS x2) where
-    [x0, x1, x2] = BS.split ' ' bs
+getLn :: (ReadBS a, VG.Vector v a) => Int -> IO (v a)
+getLn n = VG.replicateM n get
 
-instance (Readable a, VU.Unbox a) => Readable (VU.Vector a) where
-  fromBS = VU.fromList . map fromBS . BS.split ' '
-
-instance (Readable a) => Readable (V.Vector a) where
-  fromBS = V.fromList . map fromBS . BS.split ' '
-
-instance (Readable a) => Readable [a] where
-  fromBS = map fromBS . BS.split ' '
+get :: ReadBS a => IO a
+get = readBS <$> BS.getLine
 
 class Ring a where
   (+), (-) :: a -> a -> a
