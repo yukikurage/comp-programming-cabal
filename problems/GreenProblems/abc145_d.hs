@@ -1,9 +1,18 @@
+-----------------
+-- GHC Options --
+-----------------
+
 {-# OPTIONS_GHC -O2                       #-}
 {-# OPTIONS_GHC -Wno-unused-imports       #-}
 {-# OPTIONS_GHC -Wno-missing-import-lists #-}
 
+-------------------------
+-- Language Extensions --
+-------------------------
+
 {-# LANGUAGE BlockArguments      #-}
 {-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE LambdaCase          #-}
 {-# LANGUAGE MultiWayIf          #-}
 {-# LANGUAGE NegativeLiterals    #-}
 {-# LANGUAGE OverloadedLists     #-}
@@ -16,43 +25,55 @@
 
 module Main where
 
-import qualified Control.Monad                 as M
-import qualified Control.Monad.Primitive       as Prim
-import qualified Control.Monad.ST              as ST
-import qualified Data.Array.IArray             as A
-import qualified Data.Array.IO                 as AIO
-import qualified Data.Array.MArray             as AM
-import qualified Data.Array.ST                 as AST
-import qualified Data.Array.Unboxed            as AU
-import qualified Data.Bits                     as Bits
-import qualified Data.ByteString.Char8         as BS
-import qualified Data.Char                     as Char
-import qualified Data.Complex                  as Comp
-import qualified Data.Graph                    as Graph
-import qualified Data.Heap                     as Heap
-import qualified Data.IORef                    as IORef
-import qualified Data.List                     as L
-import qualified Data.Map.Strict               as Map
-import qualified Data.Maybe                    as Maybe
-import qualified Data.Primitive.MutVar         as MuVar
-import qualified Data.Proxy                    as Proxy
-import qualified Data.STRef                    as STRef
-import qualified Data.Sequence                 as Seq
-import qualified Data.Set                      as Set
-import qualified Data.Tree                     as Tree
-import qualified Data.Vector                   as V
-import qualified Data.Vector.Algorithms.Merge  as VAM
-import qualified Data.Vector.Algorithms.Search as VAS
-import           Data.Vector.Generic           ((!))
-import qualified Data.Vector.Generic           as VG
-import qualified Data.Vector.Generic.Mutable   as VGM
-import qualified Data.Vector.Mutable           as VM
-import qualified Data.Vector.Unboxed           as VU
-import qualified Data.Vector.Unboxed.Mutable   as VUM
-import qualified Debug.Trace                   as Trace
-import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (negate, print, recip,
-                                                (*), (+), (-), (/), (^), (^^))
+------------------
+-- Import Lists --
+------------------
+
+import qualified Control.Monad                     as M
+import qualified Control.Monad.Primitive           as Prim
+import qualified Control.Monad.ST                  as ST
+import qualified Data.Array.IArray                 as A
+import qualified Data.Array.IO                     as AIO
+import qualified Data.Array.MArray                 as AM
+import qualified Data.Array.ST                     as AST
+import qualified Data.Array.Unboxed                as AU
+import qualified Data.Bits                         as Bits
+import qualified Data.ByteString.Char8             as BS
+import qualified Data.Char                         as Char
+import qualified Data.Complex                      as Comp
+import qualified Data.Graph.Inductive.Basic        as GB
+import qualified Data.Graph.Inductive.Graph        as G
+import qualified Data.Graph.Inductive.PatriciaTree as GP
+import qualified Data.Graph.Inductive.Query.BFS    as GBFS
+import qualified Data.Graph.Inductive.Query.DFS    as GDFS
+import qualified Data.Graph.Inductive.Query.SP     as GSP
+import qualified Data.Heap                         as Heap
+import qualified Data.IORef                        as IORef
+import qualified Data.IntPSQ                       as PSQ
+import qualified Data.List                         as L
+import qualified Data.Map.Strict                   as Map
+import qualified Data.Maybe                        as Maybe
+import qualified Data.Primitive.MutVar             as MuVar
+import qualified Data.Proxy                        as Proxy
+import qualified Data.STRef                        as STRef
+import qualified Data.Sequence                     as Seq
+import qualified Data.Set                          as Set
+import qualified Data.Tree                         as Tree
+import qualified Data.Vector                       as V
+import qualified Data.Vector.Algorithms.Merge      as VAM
+import qualified Data.Vector.Algorithms.Radix      as VAR
+import qualified Data.Vector.Algorithms.Search     as VAS
+import           Data.Vector.Generic               ((!))
+import qualified Data.Vector.Generic               as VG
+import qualified Data.Vector.Generic.Mutable       as VGM
+import qualified Data.Vector.Mutable               as VM
+import qualified Data.Vector.Unboxed               as VU
+import qualified Data.Vector.Unboxed.Mutable       as VUM
+import qualified Debug.Trace                       as Trace
+import qualified GHC.TypeNats                      as TypeNats
+import           Prelude                           hiding (negate, print, recip,
+                                                    (*), (+), (-), (/), (^),
+                                                    (^^))
 import qualified Prelude
 
 ----------
@@ -61,6 +82,14 @@ import qualified Prelude
 
 main :: IO ()
 main = do
+  [x, y] <- get @[Int]
+  let
+    (x', y') = ((2 * x `div` 3) - (y `div` 3), (2 * y `div` 3) - (x `div` 3))
+    c n r = V.foldr' (*) one (V.map modint [1 .. n]) / (V.foldr' (*) one (V.map modint [1 .. r]) * V.foldr' (*) one (V.map modint [1 .. n - r]))
+  print if
+    | (x + y) `mod` 3 /= 0 -> modint 0 :: ModInt 1000000007
+    | x' < 0 || y' < 0     -> modint 0
+    | otherwise            -> (x' + y') `c` x'
   return ()
 
 -------------
@@ -251,8 +280,8 @@ a ^^ n
 
 newtype ModInt (p :: TypeNats.Nat) = ModInt Int deriving Eq
 
-instance Show (ModInt p) where
-  show (ModInt x) = show x
+instance ShowBS (ModInt p) where
+  showBS (ModInt x) = showBS x
 
 instance TypeNats.KnownNat p => Ring (ModInt p) where
   (ModInt x) + (ModInt y) = ModInt $ (x + y) `mod` p where
@@ -333,10 +362,9 @@ getComped (Comp _ comped) = comped
 
 data DisjointSet m = DSet
   {dsParents :: VUM.MVector m Int, dsDepths ::VUM.MVector m Int}
--- ^ (Parent, Depth)を保存
 
 newDSet :: Prim.PrimMonad m => Int -> m (DisjointSet (Prim.PrimState m))
-newDSet n = DSet <$> VUM.generate n id <*> VUM.replicate n 1
+newDSet n = DSet <$> VU.thaw (VU.generate n id) <*> VUM.replicate n 1
 
 -- | ルートを調べる時につなぎ直す
 root :: Prim.PrimMonad m => DisjointSet (Prim.PrimState m) -> Int -> m Int
@@ -359,17 +387,23 @@ union ds i j = do
 
 find :: Prim.PrimMonad m =>
   DisjointSet (Prim.PrimState m) -> Int -> Int -> m Bool
-find ds i j =  (==) <$> root ds i <*> root ds j
+find ds i j = (==) <$> root ds i <*> root ds j
 
-{-
-testDS :: IO ()
-testDS = do
-  ds <- newDSet (10 ^ 5)
-  VU.forM_ [0 .. 10 ^ 5 - 3] \i ->
-    union ds i $ i + 1
-  print . (\x -> if x then "true" :: BS.ByteString else "false") =<<
-    find ds 0 (10^5 - 1)
--}
+--------------
+-- Dijkstra --
+--------------
+
+weightedGraph :: G.Node -> [G.LEdge b] -> GP.Gr () b
+weightedGraph n = G.mkGraph (map (,()) [0 .. n - 1])
+
+dijkstra :: (G.Graph gr, Real a1) => gr a2 a1 -> G.Node -> V.Vector (Maybe a1)
+dijkstra gr i = V.create do
+  let
+    sp = map (head . G.unLPath) . GSP.spTree i $ gr
+    n = G.order gr
+  v <- VM.replicate n Nothing
+  M.forM_ sp \(node, l) -> VM.write v node $ Just l
+  return v
 
 ------------
 -- Others --

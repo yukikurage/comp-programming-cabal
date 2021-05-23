@@ -14,10 +14,15 @@ author:             yukikurage
 maintainer:         yukikurage.music@gmail.com
 
 common shared-properties
-  default-language: Haskell2010
-  --build-depends: base, array, containers, bytestring, vector, heaps, vector-algorithms
-  build-depends: base, containers, primitive, vector-algorithms, vector, bytestring, array, heap
-  ghc-options:      -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -Wmissing-import-lists -Wcompat
+    default-language: Haskell2010
+    --build-depends: base, array, containers, bytestring, vector, heaps, vector-algorithms
+    build-depends: base, containers == 0.6.2.1 , primitive == 0.7.0.1,
+        vector-algorithms == 0.8.0.3, vector == 0.12.1.2,
+        bytestring == 0.10.10.0, array == 0.5.4.0, heaps == 0.3.6.1,
+        psqueues == 0.2.7.2, deepseq == 1.4.4.0, fgl == 5.7.0.2,
+        QuickCheck == 2.13.2, unboxing-vector == 0.1.1.0, massiv == 0.5.1.0,
+        repa == 3.4.1.4, hashable == 1.3.0.0 
+    ghc-options: -Wall -Wincomplete-uni-patterns -Wincomplete-record-updates -Wmissing-import-lists -Wcompat
 
 -- A copyright notice.
 -- copyright:
@@ -41,11 +46,14 @@ library
 executable comp-programming-cabal
     import:              shared-properties
 
-    hs-source-dirs: app
-    --hs-source-dirs: problems
+    --hs-source-dirs: app
+    hs-source-dirs: problems
 
-    main-is: Main.hs
-    --main-is: GreenProblems/ABC142_D.hs
+    --main-is: Temp.hs
+    --main-is: ModIntTest.hs
+    --main-is: GreenProblems/panasonic2020_d.hs
+    --main-is: practice/abc035_d_infint.hs
+    main-is: abc202/c.hs
 
     -- Modules included in this executable, other than Main.
     -- other-modules:
@@ -53,7 +61,7 @@ executable comp-programming-cabal
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:  comp-programming-cabal
-    
+
 test-suite comp-programming-cabal-test
     import:              shared-properties
     type:             exitcode-stdio-1.0
