@@ -1,6 +1,6 @@
 # comp-programming-cabal
 stackからcabalに乗り換えたのでレポジトリを変えた
-## コーディング
+## コーディング規則
 ### 変数名
 内部での変数はxとかyとか List, Vectorなどは xs, ys .. 
 足りなくなったら ps, qs など適宜。
