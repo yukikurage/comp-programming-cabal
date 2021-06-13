@@ -53,7 +53,7 @@ executable comp-programming-cabal
     --main-is: ModIntTest.hs
     --main-is: GreenProblems/panasonic2020_d.hs
     --main-is: practice/abc035_d_infint.hs
-    main-is: abc202/c.hs
+    main-is: abc204/e.hs
 
     -- Modules included in this executable, other than Main.
     -- other-modules:
