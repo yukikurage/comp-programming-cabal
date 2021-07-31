@@ -81,7 +81,22 @@ import           Prelude                       hiding (print)
 
 main :: IO ()
 main = do
-  return ()
+  [n, q] <- get @[Int]
+  xs <- getLn @VU.Vector @(Int, Int) $ n - 1
+  qs <- getLn @VU.Vector @(Int, Int) $ q
+  let
+    t = dfs
+      do gFromEdges n $ VU.concatMap (\(a, b) -> [(a - 1, b - 1, ()), (b - 1, a - 1, ())]) xs
+      do 0
+  v <- VUM.replicate n False
+  let
+    mark frag (Tree.Node i ts) = do
+      VUM.write v i frag
+      mapM_ (mark (not frag)) ts
+  mark True t
+  ys <- VU.freeze v
+  VU.forM_ qs \(c, d) ->
+    putStrLn $ if ys ! (c - 1) == ys ! (d - 1) then "Town" else "Road"
 
 -------------
 -- Library --

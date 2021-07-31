@@ -81,6 +81,9 @@ import           Prelude                       hiding (print)
 
 main :: IO ()
 main = do
+  [n, x] <- get @[Int]
+  xs <- get @(VU.Vector Int)
+  putStrLn $ if VU.sum xs - n `div` 2 <= x then "Yes" else "No"
   return ()
 
 -------------

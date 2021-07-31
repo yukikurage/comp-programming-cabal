@@ -32,7 +32,6 @@ module Main where
 -- Import Lists --
 ------------------
 
-import           Control.Arrow                 ((>>>))
 import qualified Control.Monad                 as M
 import qualified Control.Monad.Primitive       as Prim
 import qualified Control.Monad.ST              as ST
@@ -48,7 +47,7 @@ import qualified Data.Foldable                 as Foldable
 import qualified Data.Function                 as Func
 import qualified Data.Heap                     as Heap
 import qualified Data.IORef                    as IORef
-import qualified Data.IntPSQ                   as PSQueue
+import qualified Data.IntPSQ                   as PSQ
 import qualified Data.Ix                       as Ix
 import qualified Data.List                     as L
 import qualified Data.Map.Strict               as Map
@@ -79,8 +78,21 @@ import           Prelude                       hiding (print)
 -- Main --
 ----------
 
+facts = V.scanl1' (*) [1 :: Mod Int 1000000007 .. 10 ^ 5]
+
+choose n r = facts ! n / (facts ! r) * (facts ! (n - r))
+
 main :: IO ()
 main = do
+  [n, m, k] <- get @[Int]
+  let
+    n' = fromIntegral n :: Mod Int 1000000007
+    m' = fromIntegral m :: Mod Int 1000000007
+    k' = fromIntegral k :: Mod Int 1000000007
+    f 0 = 1
+    f 1 = 1
+    f i = 
+    xs = V.map f $ V.fromList [0 .. n - k - 1]
   return ()
 
 -------------
@@ -92,7 +104,7 @@ main = do
 ---------
 
 -- | ex) getLn @Int @VU.Vector n, getLn @[Int] @V.Vector n
-getLn :: (VG.Vector v a, ReadBS a) => Int -> IO (v a)
+getLn :: (ReadBS a, VG.Vector v a) => Int -> IO (v a)
 getLn n = VG.replicateM n get
 
 -- | ex) get @Int, get @(VU.Vector) ..
@@ -118,6 +130,7 @@ class ReadBS a where
 class ShowBS a where
   showBS :: a -> BS.ByteString
 
+-- こうした方がStringを経由しないので高速？
 instance ReadBS Int where
   readBS s = case BS.readInt s of
     Just (x, _) -> x
@@ -230,8 +243,6 @@ instance (TypeNats.KnownNat p, Integral a) => Fractional (Mod a p) where
 [1, 3, 2, 5] なら 1 + 3ω + 2ω^2 + 5ω^3
 -}
 
-data ViewInf a = Infinity | Finity a
-
 newtype Inf a = Inf (V.Vector a) deriving Eq
 
 instance ReadBS a => ReadBS (Inf a) where
@@ -276,10 +287,10 @@ xs .! i
 infinity :: Num a => Inf a
 infinity = Inf [0, 1]
 
-fromInf :: (Eq a, Num a) => Inf a -> ViewInf a
+fromInf :: (Eq a, Num a) => Inf a -> Maybe a
 fromInf (Inf xs)
-  | V.length xs == 1 = Finity $ xs ! 0
-  | otherwise = Infinity
+  | V.length xs == 1 = Just $ xs ! 0
+  | otherwise = Nothing
 
 infMold :: (Num a, Eq a) => Inf a -> Inf a
 infMold (Inf xs) = Inf . dropWhileRev (== 0) $ xs
@@ -301,7 +312,7 @@ type DisjointSet = VU.Vector Int
 data DisjointSetM m = DSet
   {dsParents :: VUM.MVector m Int, dsDepths :: VUM.MVector m Int}
 
-dsFromEdges :: Int -> VU.Vector (Int, Int) -> DisjointSet
+dsFromEdges :: Int -> VU.Vector (Int, Int) -> VU.Vector Int
 dsFromEdges n edges = VU.create do
   ds <- newDSet n
   VU.forM_ edges $ uncurry (union ds)
@@ -345,38 +356,26 @@ union ds i j = do
 -- Monadic Priority Queue --
 ----------------------------
 
-type MPSQueue m p v = MutVar.MutVar m (PSQueue.IntPSQ p v)
+-- 優先度付きキュー(IntPSQ)のモナディックな実装(いらないかも)
+type PriorityQueue p = PSQ.IntPSQ p ()
+type MPriorityQueue s p = MutVar.MutVar s (PriorityQueue p)
 
-mpsqNull :: Prim.PrimMonad m => MPSQueue (Prim.PrimState m) p v -> m Bool
-mpsqNull q = PSQueue.null <$>  MutVar.readMutVar q
+mpqNew :: (Prim.PrimMonad m, Ord p) => m (MPriorityQueue (Prim.PrimState m) p)
+mpqNew = MutVar.newMutVar PSQ.empty
 
-mpsqEmpty :: Prim.PrimMonad m => m (MPSQueue (Prim.PrimState m) p v)
-mpsqEmpty = MutVar.newMutVar PSQueue.empty
+mpqMinView ::  (Prim.PrimMonad m, Ord p) => MPriorityQueue (Prim.PrimState m) p -> m (Maybe Int)
+mpqMinView mpq = do
+  pq <- MutVar.readMutVar mpq
+  case PSQ.minView pq of
+    Nothing             -> return Nothing
+    Just (n, _, _, pq') -> MutVar.writeMutVar mpq pq' >> return (Just n)
 
-mpsqSingleton :: Prim.PrimMonad m => Ord p => Int -> p -> v -> m (MPSQueue (Prim.PrimState m) p v)
-mpsqSingleton k p v = MutVar.newMutVar $ PSQueue.singleton k p v
-
-mpsqInsert :: Prim.PrimMonad m => Ord p => Int -> p -> v -> MPSQueue (Prim.PrimState m) p v -> m ()
-mpsqInsert k p v = flip MutVar.modifyMutVar' (PSQueue.insert k p v)
-
--- | 要素は削除せず，優先度が一番小さいものを取り出す
-mpsqFindMin :: Prim.PrimMonad m => Ord p => MPSQueue (Prim.PrimState m) p v -> m (Maybe (Int, p, v))
-mpsqFindMin q = PSQueue.findMin <$> MutVar.readMutVar q
-
--- | 要素を削除して，優先度が一番小さいものを取り出す
-mpsqMinView :: Prim.PrimMonad m => Ord p => MPSQueue (Prim.PrimState m) p v -> m (Maybe (Int, p, v))
-mpsqMinView q = do
-  res <- PSQueue.minView <$> MutVar.readMutVar q
-  case res of
-    Nothing -> return Nothing
-    Just (k, p, v, q') -> do
-      MutVar.writeMutVar q q'
-      return $ Just (k, p, v)
+mpqInsert :: (Prim.PrimMonad m, Ord p) => MPriorityQueue (Prim.PrimState m) p -> Int -> p -> m ()
+mpqInsert mpq n p = MutVar.modifyMutVar' mpq (PSQ.insert n p ())
 
 -----------
 -- Graph --
 -----------
-
 type Graph a = V.Vector [(Int, a)] --aは辺の情報
 type UGraph = Graph ()
 
@@ -399,41 +398,24 @@ gReverse g = ST.runST do
   V.freeze v
 
 dijkstra :: Graph Int -> Int -> V.Vector (Inf Int)
-dijkstra g i = V.create do
+dijkstra g i = ST.runST do
   let
     n = V.length g
-
-  -- 辺の距離の初期化
-  dists <- VM.replicate n infinity
-  VM.write dists i 0
-
-  -- キューの初期化
-  queue <- mpsqSingleton i 0 ()
-
-  let
-    -- 頂点情報のアップデート処理
-    update v alt = do
-      VM.write dists v alt
-      mpsqInsert v alt () queue
-
-    -- 確定した頂点を取り出したときの処理
-    processing u = do
-      dist_u <- VM.read dists u
-      M.forM_ (g ! u) (\(v, cost) -> do
-        dist_v <- VM.read dists v
+  d <- VM.new n
+  q <- mpqNew
+  V.forM_ [0 .. n - 1] \j -> let dj = if i == j then 0 else infinity in
+    VM.write d j dj >> mpqInsert q j dj
+  while $ mpqMinView q >>= \case
+    Nothing -> return False
+    Just u -> do
+      dist_u <- VM.read d u
+      M.forM_ (g ! u) \(v,len) -> do
+        dist_v <- VM.read d v
         let
-          alt = dist_u + fromIntegral cost
-        M.when (dist_v > alt) $ update v alt
-        )
-
-  while do
-    res <- mpsqMinView queue
-    case res of
-      Nothing             -> return False
-      Just (u, _, _) -> do
-        processing u
-        return True
-  return dists
+          alt = dist_u + fromIntegral len
+        M.when (dist_v > alt) $ VM.write d v alt >> mpqInsert q v alt
+      return True
+  V.freeze d
 
 dfs :: Graph a -> Int -> Tree.Tree Int
 dfs g i = ST.runST do

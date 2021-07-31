@@ -25,7 +25,6 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE ViewPatterns        #-}
 
-
 module Main where
 
 ------------------
@@ -81,6 +80,8 @@ import           Prelude                       hiding (print)
 
 main :: IO ()
 main = do
+  [a, b] <- get @[Int]
+  print $ max 0 $ b - a + 1
   return ()
 
 -------------

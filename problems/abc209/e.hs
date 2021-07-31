@@ -79,9 +79,58 @@ import           Prelude                       hiding (print)
 -- Main --
 ----------
 
+data Winner = Takahashi | Aoki | Draw Int deriving (Eq, Show)
+
+data DicWord = DicWord { takedWord :: BS.ByteString, index :: Int } deriving (Show)
+
+instance ShowBS Winner where
+  showBS (Draw _) = "Draw"
+  showBS x        = BS.pack $ show $ x
+
+instance Eq DicWord where
+  x == y = (takedWord x) == (takedWord y)
+
+instance Ord DicWord where
+  compare x y = compare (takedWord x) (takedWord y)
+
+-- Child -> Parent -> New Parent
+updateParent :: Winner -> Winner -> Winner
+updateParent Takahashi Takahashi = Aoki
+updateParent Takahashi (Draw _)  = Aoki
+updateParent Aoki (Draw 1)       = Takahashi
+updateParent Aoki (Draw n)       = Draw (n - 1)
+updateParent _ x                 = x
+
 main :: IO ()
 main = do
-  return ()
+  n <- get @Int
+  wordList <- getLn @V.Vector @BS.ByteString n
+  let
+    dictionaly = V.modify VAM.sort $ V.zipWith (\x i -> DicWord { takedWord = x, index = i }) (V.map (BS.take 3) wordList) [0 .. n - 1]
+  thawDic <- V.thaw dictionaly
+  edges <- VG.convert . V.concat <$> M.forM [0 .. n - 1] \i -> do
+    l <- VAS.binarySearchL thawDic $ DicWord { takedWord = BS.drop (BS.length (wordList ! i) - 3) (wordList ! i) , index = 0}
+    r <- VAS.binarySearchR thawDic $ DicWord { takedWord = BS.drop (BS.length (wordList ! i) - 3) (wordList ! i) , index = 0}
+    return $ V.map (\j -> (i, j, ())) $ V.map (\j -> index $ dictionaly ! j) [l .. r - 1]
+  let
+    g = gFromEdges n edges
+    gRev = gReverse g
+  v <- VM.new n
+  VU.forM_ [0 .. n - 1] \i -> VM.write v i $ Draw $ length $ g ! i
+  let
+    updateTaka i = do
+      VM.write v i Takahashi
+      updateAll i
+    updateAll i =
+      M.forM_ (gRev ! i) \(j, _) -> do
+        c <- VM.read v i
+        p <- VM.read v j
+        let p' = updateParent c p
+        VM.write v j p'
+        M.when (p /= p') $ updateAll j
+  V.forM_ (V.filter (\i -> g ! i == []) [0 .. n - 1]) \i -> updateTaka i
+  answers <- V.freeze v
+  V.forM_ answers \ans -> print ans
 
 -------------
 -- Library --

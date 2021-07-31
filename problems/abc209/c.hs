@@ -81,6 +81,9 @@ import           Prelude                       hiding (print)
 
 main :: IO ()
 main = do
+  n <- get @Int
+  xs <- get @(V.Vector Int)
+  print $ V.product $ V.map (fromIntegral @_ @(Mod Int 1000000007)) $ V.zipWith (\i x -> max 0 $ x - i) [0 .. n - 1] $ V.modify VAM.sort xs
   return ()
 
 -------------

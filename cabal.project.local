@@ -1,6 +1,4 @@
 ignore-project: False
-profiling: True
-coverage: True
 library-coverage: True
 documentation: True
 
