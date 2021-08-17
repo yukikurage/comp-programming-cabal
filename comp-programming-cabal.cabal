@@ -31,36 +31,15 @@ extra-source-files:
     CHANGELOG.md
     README.md
 
-library
+executable problems
     import:              shared-properties
-    -- cabal-fmt: expand src
-    exposed-modules:  MyLib
+    hs-source-dirs: problems
+    main-is: abc214/a_short.hs
 
-    -- Modules included in this library but not exported.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-    hs-source-dirs:   src
-
-executable comp-programming-cabal
+executable templates
     import:              shared-properties
-
     hs-source-dirs: app
-    --hs-source-dirs: problems
-
     main-is: Temp.hs
-    --main-is: ModIntTest.hs
-    --main-is: GreenProblems/panasonic2020_d.hs
-    --main-is: practice/abc035_d_infint.hs
-    --main-is: abc209/e.hs
-
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-    build-depends:  comp-programming-cabal
 
 test-suite comp-programming-cabal-test
     import:              shared-properties

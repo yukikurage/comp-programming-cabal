@@ -149,6 +149,10 @@ instance (ReadBS a, ReadBS b, ReadBS c) => ReadBS (a, b, c) where
   readBS (BS.words -> [a, b, c]) = (readBS a, readBS b, readBS c)
   readBS _ = error "Invalid Format :: readBS :: ByteString -> (a, b)"
 
+instance (ReadBS a, ReadBS b, ReadBS c, ReadBS d) => ReadBS (a, b, c, d) where
+  readBS (BS.words -> [a, b, c, d]) = (readBS a, readBS b, readBS c, readBS d)
+  readBS _ = error "Invalid Format :: readBS :: ByteString -> (a, b)"
+
 instance ShowBS Int where
   showBS = BS.pack . show
 
@@ -176,6 +180,10 @@ instance (ShowBS a, ShowBS b) => ShowBS (a, b) where
 instance (ShowBS a, ShowBS b, ShowBS c) => ShowBS (a, b, c) where
   showBS (a, b, c) = showBS a `BS.append` " " `BS.append` showBS b
     `BS.append` showBS c
+
+instance (ShowBS a, ShowBS b, ShowBS c, ShowBS d) => ShowBS (a, b, c, d) where
+  showBS (a, b, c, d) = showBS a `BS.append` " " `BS.append` showBS b
+    `BS.append` showBS c `BS.append` showBS d
 
 showVec :: (VG.Vector v a, ShowBS a) => v a -> BS.ByteString
 showVec xs
