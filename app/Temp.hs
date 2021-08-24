@@ -91,12 +91,12 @@ main = do
 ---------
 
 -- | ex) get @Int, get @(VU.Vector) ..
-input :: ReadBS a => IO a
-input = readBS <$> BS.getLine
+get :: ReadBS a => IO a
+get = readBS <$> BS.getLine
 
 -- | ex) getLn @Int @VU.Vector n, getLn @[Int] @V.Vector n
-inputLines :: ReadBSLines a => Int -> IO a
-inputLines n = readBSLines . BS.concat <$> M.replicateM n BS.getLine
+getLines :: ReadBSLines a => Int -> IO a
+getLines n = readBSLines . BS.concat <$> M.replicateM n BS.getLine
 
 -- | 改行なし出力
 output :: ShowBS a => a -> IO ()
