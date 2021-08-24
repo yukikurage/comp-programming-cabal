@@ -452,13 +452,13 @@ type UGraph = Graph ()
 gEmpty :: Graph a
 gEmpty = V.singleton []
 
--- | 辺をすべて反転させる
 gFromEdges :: VU.Unboxable  a => Int -> VU.Vector (Int, Int, a) -> Graph a
 gFromEdges n edges = ST.runST do
   v <- VM.replicate n []
   VU.forM_ edges \(i, j, a) -> VM.modify v ((j, a):) i
   V.freeze v
 
+-- | 辺をすべて反転させる
 gReverse :: Graph a -> Graph a
 gReverse g = ST.runST do
   let
@@ -514,6 +514,40 @@ dfs g i = ST.runST do
       childs <- M.mapM loop nexts
       return $ Tree.Node now childs
   loop i
+
+----------
+-- Maze --
+----------
+
+type Maze = AU.Array (Int, Int) Char
+-- ^ 競プロでよく出るCharの迷路
+
+mzHeight :: Maze -> Int
+mzHeight = (+1) . fst . snd . AU.bounds
+
+mzWidth :: Maze -> Int
+mzWidth = (+1) . snd . snd . AU.bounds
+
+type Rules a = Char -> Char -> Maybe a
+
+mazeToGraph :: VUM.Unboxable a => Rules a -> Maze -> Graph a
+mazeToGraph rules maze = gFromEdges (h * w) . VU.fromList $
+  Maybe.catMaybes $
+  [edge |
+  i <- [0 .. h - 1],
+  j <- [0 .. w - 1],
+  i' <- [i - 1, i + 1],
+  i' >= 0,
+  i' < h,
+  j' <- [j - 1, j + 1],
+  j' >= 0,
+  j' < w,
+  let c = maze AU.! (i, j),
+  let c' = maze AU.! (i', j'),
+  let edge = (h * i + j, h * i' + j',) <$> rules c c']
+  where
+  h = mzHeight maze
+  w = mzWidth maze
 
 ------------
 -- Others --
