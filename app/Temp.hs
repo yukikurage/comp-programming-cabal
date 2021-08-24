@@ -96,7 +96,7 @@ get = readBS <$> BS.getLine
 
 -- | ex) getLn @Int @VU.Vector n, getLn @[Int] @V.Vector n
 getLines :: ReadBSLines a => Int -> IO a
-getLines n = readBSLines . BS.concat <$> M.replicateM n BS.getLine
+getLines n = readBSLines . BS.unlines <$> M.replicateM n BS.getLine
 
 -- | 改行なし出力
 output :: ShowBS a => a -> IO ()
@@ -257,10 +257,10 @@ instance ShowBSLines BS.ByteString where
   showBSLines = id
 
 readVecLines :: (VG.Vector v a, ReadBS a) => BS.ByteString -> v a
-readVecLines = VG.fromList . readBS
+readVecLines = VG.fromList . readBSLines
 
 showVecLines :: (VG.Vector v a, ShowBS a) => v a -> BS.ByteString
-showVecLines = showBS . VG.toList
+showVecLines = showBSLines . VG.toList
 
 ------------
 -- ModInt --
@@ -568,10 +568,9 @@ mazeToGraph rules maze = gFromEdges (h * w) $ VU.fromList $
   [edge |
   i <- [0 .. h - 1],
   j <- [0 .. w - 1],
-  i' <- [i - 1, i + 1],
+  (i', j') <- [(i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1)],
   i' >= 0,
   i' < h,
-  j' <- [j - 1, j + 1],
   j' >= 0,
   j' < w,
   let c = maze AU.! (i, j),
