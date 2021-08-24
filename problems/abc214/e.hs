@@ -25,6 +25,7 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE ViewPatterns        #-}
 
+
 module Main where
 
 ------------------
@@ -80,7 +81,27 @@ import           Prelude                       hiding (print)
 
 main :: IO ()
 main = do
-  return ()
+  s <- get @BS.ByteString
+  let
+    n = BS.length s
+    next = mkTable s
+  dp <- do
+    v <- VUM.new $ n + 1
+    VUM.write v 0 (1 :: Int)
+    VU.forM_ [0 .. n - 1] \i -> do
+      VU.forM_ ['a' .. 'z'] \c -> do
+        M.when (next A.! (i, c) < n) do
+          x <- VUM.read v i
+          VUM.modify v (+ x) ((next A.! (i, c)) + 1)
+    VU.freeze v
+  print $ VU.sum dp
+
+mkTable :: BS.ByteString -> A.Array (Int, Char) Int
+mkTable s = res where
+  n = BS.length s
+  res = A.listArray ((0, 'a'), (n - 1, 'z')) $ map f $ A.range ((0, 'a'), (n - 1, 'z'))
+  f (i, c) | i == n - 1 || i == n - 2 = if BS.index s i == c then i else n + 1
+  f (i, c) = if BS.index s i == c then i else res A.! (i + 2, c)
 
 -------------
 -- Library --
@@ -90,37 +111,29 @@ main = do
 -- I/O --
 ---------
 
--- | ex) get @Int, get @(VU.Vector) ..
-input :: ReadBS a => IO a
-input = readBS <$> BS.getLine
-
 -- | ex) getLn @Int @VU.Vector n, getLn @[Int] @V.Vector n
-inputLines :: ReadBSLines a => Int -> IO a
-inputLines n = readBSLines . BS.concat <$> M.replicateM n BS.getLine
+getLn :: (VG.Vector v a, ReadBS a) => Int -> IO (v a)
+getLn n = VG.replicateM n get
 
--- | 改行なし出力
-output :: ShowBS a => a -> IO ()
-output = BS.putStr . showBS
-
--- | 改行なし出力
-outputLines :: ShowBSLines a => a -> IO ()
-outputLines = BS.putStr . showBSLines
+-- | ex) get @Int, get @(VU.Vector) ..
+get :: ReadBS a => IO a
+get = readBS <$> BS.getLine
 
 -- | 改行あり出力
 print :: ShowBS a => a -> IO ()
 print = BS.putStrLn . showBS
 
--- | 改行あり出力
-printLines :: ShowBSLines a => a -> IO ()
-printLines = BS.putStrLn . showBSLines
+-- | 改行なし出力
+printF :: ShowBS a => a -> IO ()
+printF = BS.putStr . showBS
 
 ---------------
 -- Read/Show --
 ---------------
 
--- | BS版Read
 class ReadBS a where
   readBS :: BS.ByteString -> a
+-- ^ ByteString版Read
 
 class ShowBS a where
   showBS :: a -> BS.ByteString
@@ -128,7 +141,7 @@ class ShowBS a where
 instance ReadBS Int where
   readBS s = case BS.readInt s of
     Just (x, _) -> x
-    Nothing     -> error "readBS :: BS -> Int"
+    Nothing     -> error "readBS :: ByteString -> Int"
 
 instance ReadBS Integer where
   readBS = fromIntegral . (readBS @Int)
@@ -140,27 +153,25 @@ instance ReadBS BS.ByteString where
   readBS = id
 
 instance (ReadBS a, VU.Unboxable a) => ReadBS (VU.Vector a) where
-  readBS = readVec
+  readBS s = VG.fromList . map readBS . BS.words $ s
 
 instance (ReadBS a) => ReadBS (V.Vector a) where
-  readBS = readVec
+  readBS s = VG.fromList . map readBS . BS.words $ s
 
 instance ReadBS a => ReadBS [a] where
-  readBS = map readBS . BS.words
+  readBS s = map readBS . BS.words $ s
 
 instance (ReadBS a, ReadBS b) => ReadBS (a, b) where
   readBS (BS.words -> [a, b]) = (readBS a, readBS b)
-  readBS _                    = error "Invalid Format :: readBS :: BS -> (a, b)"
+  readBS _ = error "Invalid Format :: readBS :: ByteString -> (a, b)"
 
 instance (ReadBS a, ReadBS b, ReadBS c) => ReadBS (a, b, c) where
   readBS (BS.words -> [a, b, c]) = (readBS a, readBS b, readBS c)
-  readBS _ = error "Invalid Format :: readBS :: BS -> (a, b, c)"
+  readBS _ = error "Invalid Format :: readBS :: ByteString -> (a, b)"
 
 instance (ReadBS a, ReadBS b, ReadBS c, ReadBS d) => ReadBS (a, b, c, d) where
-  readBS (BS.words -> [a, b, c, d])
-    = (readBS a, readBS b, readBS c, readBS d)
-  readBS _
-    = error "Invalid Format :: readBS :: BS -> (a, b, c, d)"
+  readBS (BS.words -> [a, b, c, d]) = (readBS a, readBS b, readBS c, readBS d)
+  readBS _ = error "Invalid Format :: readBS :: ByteString -> (a, b)"
 
 instance ShowBS Int where
   showBS = BS.pack . show
@@ -181,79 +192,27 @@ instance (ShowBS a) => ShowBS (V.Vector a) where
   showBS = showVec
 
 instance ShowBS a => ShowBS [a] where
-  showBS = BS.unwords . map showBS
+  showBS = BS.pack . unwords . map (BS.unpack . showBS)
 
 instance (ShowBS a, ShowBS b) => ShowBS (a, b) where
-  showBS (a, b) =
-    showBS a
-    `BS.append`
-    " "
-    `BS.append`
-    showBS b
+  showBS (a, b) = showBS a `BS.append` " " `BS.append` showBS b
 
 instance (ShowBS a, ShowBS b, ShowBS c) => ShowBS (a, b, c) where
-  showBS (a, b, c) =
-    showBS a
-    `BS.append`
-    " "
-    `BS.append`
-    showBS b
-    `BS.append`
-    " "
-    `BS.append`
-    showBS c
+  showBS (a, b, c) = showBS a `BS.append` " " `BS.append` showBS b
+    `BS.append` showBS c
 
 instance (ShowBS a, ShowBS b, ShowBS c, ShowBS d) => ShowBS (a, b, c, d) where
-  showBS (a, b, c, d) =
-    showBS a
-    `BS.append`
-    " "
-    `BS.append`
-    showBS b
-    `BS.append`
-    " "
-    `BS.append`
-    showBS c
-    `BS.append`
-    " "
-    `BS.append`
-    showBS d
-
-readVec :: (VG.Vector v a, ReadBS a) => BS.ByteString -> v a
-readVec = VG.fromList . readBS
+  showBS (a, b, c, d) = showBS a `BS.append` " " `BS.append` showBS b
+    `BS.append` showBS c `BS.append` showBS d
 
 showVec :: (VG.Vector v a, ShowBS a) => v a -> BS.ByteString
-showVec = showBS . VG.toList
-
-class ReadBSLines a where
-  readBSLines :: BS.ByteString -> a
-
-class ShowBSLines a where
-  showBSLines :: a -> BS.ByteString
-
-instance ReadBS a => ReadBSLines [a] where
-  readBSLines = map readBS . BS.lines
-
-instance (ReadBS a, VU.Unboxable a) => ReadBSLines (VU.Vector a) where
-  readBSLines = readVecLines
-
-instance ReadBS a => ReadBSLines (V.Vector a) where
-  readBSLines = readVecLines
-
-instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unwords . map showBS
-
-instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
-  showBSLines = showVecLines
-
-instance ShowBS a => ShowBSLines (V.Vector a) where
-  showBSLines = showVecLines
-
-readVecLines :: (VG.Vector v a, ReadBS a) => BS.ByteString -> v a
-readVecLines = VG.fromList . readBS
-
-showVecLines :: (VG.Vector v a, ShowBS a) => v a -> BS.ByteString
-showVecLines = showBS . VG.toList
+showVec xs
+  | VG.null xs = ""
+  | otherwise = BS.concat [f i | i <- [0 .. 2 * VG.length xs - 2]]
+  where
+  f i
+    | even i = showBS $ xs ! (i `div` 2)
+    | otherwise = " "
 
 ------------
 -- ModInt --

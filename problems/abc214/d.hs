@@ -25,6 +25,7 @@
 {-# LANGUAGE TypeFamilies        #-}
 {-# LANGUAGE ViewPatterns        #-}
 
+
 module Main where
 
 ------------------
@@ -80,7 +81,71 @@ import           Prelude                       hiding (print)
 
 main :: IO ()
 main = do
-  return ()
+  n <- get @Int
+  edges' <- getLn @VU.Vector @(Int, Int, Int) $ n - 1
+  let
+    edges = VU.modify (VAM.sortBy (\(_, _, w1) (_, _, w2) -> compare w1 w2)) $ VU.map (\(i, j, w) -> (i - 1, j - 1, w)) edges'
+  ds <- newDSet n
+  ans <- MutVar.newMutVar 0
+  VU.forM_ edges \(i, j, w) -> do
+    sizei <- dsSize ds i
+    sizej <- dsSize ds j
+    MutVar.modifyMutVar' ans (+ w * sizei * sizej)
+    -- print =<< (VU.freeze $ dsSizes ds)
+    union ds i j
+  print =<< MutVar.readMutVar ans
+
+
+type DisjointSet = VU.Vector Int
+data DisjointSetM m = DSet
+  {dsParents :: VUM.MVector m Int, dsDepths :: VUM.MVector m Int, dsSizes :: VUM.MVector m Int}
+
+dsFromEdges :: Int -> VU.Vector (Int, Int) -> DisjointSet
+dsFromEdges n edges = VU.create do
+  ds <- newDSet n
+  VU.forM_ edges $ uncurry (union ds)
+  return $ dsParents ds
+
+newDSet :: Prim.PrimMonad m => Int -> m (DisjointSetM (Prim.PrimState m))
+newDSet n = DSet <$> VU.thaw (VU.generate n id) <*> VUM.replicate n 1 <*> VUM.replicate n 1
+
+root :: DisjointSet -> Int -> Int
+root xs i
+  | xs ! i == i = i
+  | otherwise = root xs $ xs ! i
+
+find :: DisjointSet -> Int -> Int -> Bool
+find xs i j = root xs i == root xs j
+
+-- | ルートを調べる時につなぎ直す
+rootM :: Prim.PrimMonad m => DisjointSetM (Prim.PrimState m) -> Int -> m Int
+rootM ds i = VUM.read (dsParents ds) i >>= \p -> if p == i
+  then return i
+  else rootM ds p >>= \r -> VUM.write (dsParents ds) i r >> return r
+
+dsSize :: Prim.PrimMonad m => DisjointSetM (Prim.PrimState m) -> Int -> m Int
+dsSize ds i = do
+  r <- rootM ds i
+  VUM.read (dsSizes ds) r
+
+findM :: Prim.PrimMonad m =>
+  DisjointSetM (Prim.PrimState m) -> Int -> Int -> m Bool
+findM ds i j = (==) <$> rootM ds i <*> rootM ds j
+
+union :: Prim.PrimMonad m =>
+  DisjointSetM (Prim.PrimState m) -> Int -> Int -> m ()
+union ds i j = do
+  rooti <- rootM ds i
+  rootj <- rootM ds j
+  depi <- VUM.read (dsDepths ds) rooti
+  depj <- VUM.read (dsDepths ds) rootj
+  sizei <- VUM.read (dsSizes ds) rooti
+  sizej <- VUM.read (dsSizes ds) rootj
+  if
+    | depi == depj -> VUM.modify (dsDepths ds) (+ 1) rooti >>
+    VUM.write (dsParents ds) rootj rooti >> VUM.write (dsSizes ds) rooti (sizei + sizej)
+    | depi > depj -> VUM.write (dsParents ds) rootj rooti >> VUM.write (dsSizes ds) rooti (sizei + sizej)
+    | otherwise  -> VUM.write (dsParents ds) rooti rootj >> VUM.write (dsSizes ds) rootj (sizei + sizej)
 
 -------------
 -- Library --
@@ -90,37 +155,29 @@ main = do
 -- I/O --
 ---------
 
--- | ex) get @Int, get @(VU.Vector) ..
-input :: ReadBS a => IO a
-input = readBS <$> BS.getLine
-
 -- | ex) getLn @Int @VU.Vector n, getLn @[Int] @V.Vector n
-inputLines :: ReadBSLines a => Int -> IO a
-inputLines n = readBSLines . BS.concat <$> M.replicateM n BS.getLine
+getLn :: (VG.Vector v a, ReadBS a) => Int -> IO (v a)
+getLn n = VG.replicateM n get
 
--- | 改行なし出力
-output :: ShowBS a => a -> IO ()
-output = BS.putStr . showBS
-
--- | 改行なし出力
-outputLines :: ShowBSLines a => a -> IO ()
-outputLines = BS.putStr . showBSLines
+-- | ex) get @Int, get @(VU.Vector) ..
+get :: ReadBS a => IO a
+get = readBS <$> BS.getLine
 
 -- | 改行あり出力
 print :: ShowBS a => a -> IO ()
 print = BS.putStrLn . showBS
 
--- | 改行あり出力
-printLines :: ShowBSLines a => a -> IO ()
-printLines = BS.putStrLn . showBSLines
+-- | 改行なし出力
+printF :: ShowBS a => a -> IO ()
+printF = BS.putStr . showBS
 
 ---------------
 -- Read/Show --
 ---------------
 
--- | BS版Read
 class ReadBS a where
   readBS :: BS.ByteString -> a
+-- ^ ByteString版Read
 
 class ShowBS a where
   showBS :: a -> BS.ByteString
@@ -128,7 +185,7 @@ class ShowBS a where
 instance ReadBS Int where
   readBS s = case BS.readInt s of
     Just (x, _) -> x
-    Nothing     -> error "readBS :: BS -> Int"
+    Nothing     -> error "readBS :: ByteString -> Int"
 
 instance ReadBS Integer where
   readBS = fromIntegral . (readBS @Int)
@@ -140,27 +197,25 @@ instance ReadBS BS.ByteString where
   readBS = id
 
 instance (ReadBS a, VU.Unboxable a) => ReadBS (VU.Vector a) where
-  readBS = readVec
+  readBS s = VG.fromList . map readBS . BS.words $ s
 
 instance (ReadBS a) => ReadBS (V.Vector a) where
-  readBS = readVec
+  readBS s = VG.fromList . map readBS . BS.words $ s
 
 instance ReadBS a => ReadBS [a] where
-  readBS = map readBS . BS.words
+  readBS s = map readBS . BS.words $ s
 
 instance (ReadBS a, ReadBS b) => ReadBS (a, b) where
   readBS (BS.words -> [a, b]) = (readBS a, readBS b)
-  readBS _                    = error "Invalid Format :: readBS :: BS -> (a, b)"
+  readBS _ = error "Invalid Format :: readBS :: ByteString -> (a, b)"
 
 instance (ReadBS a, ReadBS b, ReadBS c) => ReadBS (a, b, c) where
   readBS (BS.words -> [a, b, c]) = (readBS a, readBS b, readBS c)
-  readBS _ = error "Invalid Format :: readBS :: BS -> (a, b, c)"
+  readBS _ = error "Invalid Format :: readBS :: ByteString -> (a, b)"
 
 instance (ReadBS a, ReadBS b, ReadBS c, ReadBS d) => ReadBS (a, b, c, d) where
-  readBS (BS.words -> [a, b, c, d])
-    = (readBS a, readBS b, readBS c, readBS d)
-  readBS _
-    = error "Invalid Format :: readBS :: BS -> (a, b, c, d)"
+  readBS (BS.words -> [a, b, c, d]) = (readBS a, readBS b, readBS c, readBS d)
+  readBS _ = error "Invalid Format :: readBS :: ByteString -> (a, b)"
 
 instance ShowBS Int where
   showBS = BS.pack . show
@@ -181,79 +236,27 @@ instance (ShowBS a) => ShowBS (V.Vector a) where
   showBS = showVec
 
 instance ShowBS a => ShowBS [a] where
-  showBS = BS.unwords . map showBS
+  showBS = BS.pack . unwords . map (BS.unpack . showBS)
 
 instance (ShowBS a, ShowBS b) => ShowBS (a, b) where
-  showBS (a, b) =
-    showBS a
-    `BS.append`
-    " "
-    `BS.append`
-    showBS b
+  showBS (a, b) = showBS a `BS.append` " " `BS.append` showBS b
 
 instance (ShowBS a, ShowBS b, ShowBS c) => ShowBS (a, b, c) where
-  showBS (a, b, c) =
-    showBS a
-    `BS.append`
-    " "
-    `BS.append`
-    showBS b
-    `BS.append`
-    " "
-    `BS.append`
-    showBS c
+  showBS (a, b, c) = showBS a `BS.append` " " `BS.append` showBS b
+    `BS.append` showBS c
 
 instance (ShowBS a, ShowBS b, ShowBS c, ShowBS d) => ShowBS (a, b, c, d) where
-  showBS (a, b, c, d) =
-    showBS a
-    `BS.append`
-    " "
-    `BS.append`
-    showBS b
-    `BS.append`
-    " "
-    `BS.append`
-    showBS c
-    `BS.append`
-    " "
-    `BS.append`
-    showBS d
-
-readVec :: (VG.Vector v a, ReadBS a) => BS.ByteString -> v a
-readVec = VG.fromList . readBS
+  showBS (a, b, c, d) = showBS a `BS.append` " " `BS.append` showBS b
+    `BS.append` showBS c `BS.append` showBS d
 
 showVec :: (VG.Vector v a, ShowBS a) => v a -> BS.ByteString
-showVec = showBS . VG.toList
-
-class ReadBSLines a where
-  readBSLines :: BS.ByteString -> a
-
-class ShowBSLines a where
-  showBSLines :: a -> BS.ByteString
-
-instance ReadBS a => ReadBSLines [a] where
-  readBSLines = map readBS . BS.lines
-
-instance (ReadBS a, VU.Unboxable a) => ReadBSLines (VU.Vector a) where
-  readBSLines = readVecLines
-
-instance ReadBS a => ReadBSLines (V.Vector a) where
-  readBSLines = readVecLines
-
-instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unwords . map showBS
-
-instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
-  showBSLines = showVecLines
-
-instance ShowBS a => ShowBSLines (V.Vector a) where
-  showBSLines = showVecLines
-
-readVecLines :: (VG.Vector v a, ReadBS a) => BS.ByteString -> v a
-readVecLines = VG.fromList . readBS
-
-showVecLines :: (VG.Vector v a, ShowBS a) => v a -> BS.ByteString
-showVecLines = showBS . VG.toList
+showVec xs
+  | VG.null xs = ""
+  | otherwise = BS.concat [f i | i <- [0 .. 2 * VG.length xs - 2]]
+  where
+  f i
+    | even i = showBS $ xs ! (i `div` 2)
+    | otherwise = " "
 
 ------------
 -- ModInt --
@@ -366,49 +369,6 @@ dropWhileRev f xs
 -- Disjoint Set --
 ------------------
 
-type DisjointSet = VU.Vector Int
-data DisjointSetM m = DSet
-  {dsParents :: VUM.MVector m Int, dsDepths :: VUM.MVector m Int}
-
-dsFromEdges :: Int -> VU.Vector (Int, Int) -> DisjointSet
-dsFromEdges n edges = VU.create do
-  ds <- newDSet n
-  VU.forM_ edges $ uncurry (union ds)
-  return $ dsParents ds
-
-newDSet :: Prim.PrimMonad m => Int -> m (DisjointSetM (Prim.PrimState m))
-newDSet n = DSet <$> VU.thaw (VU.generate n id) <*> VUM.replicate n 1
-
-root :: DisjointSet -> Int -> Int
-root xs i
-  | xs ! i == i = i
-  | otherwise = root xs $ xs ! i
-
-find :: DisjointSet -> Int -> Int -> Bool
-find xs i j = root xs i == root xs j
-
--- | ルートを調べる時につなぎ直す
-rootM :: Prim.PrimMonad m => DisjointSetM (Prim.PrimState m) -> Int -> m Int
-rootM ds i = VUM.read (dsParents ds) i >>= \p -> if p == i
-  then return i
-  else rootM ds p >>= \r -> VUM.write (dsParents ds) i r >> return r
-
-findM :: Prim.PrimMonad m =>
-  DisjointSetM (Prim.PrimState m) -> Int -> Int -> m Bool
-findM ds i j = (==) <$> rootM ds i <*> rootM ds j
-
-union :: Prim.PrimMonad m =>
-  DisjointSetM (Prim.PrimState m) -> Int -> Int -> m ()
-union ds i j = do
-  rooti <- rootM ds i
-  rootj <- rootM ds j
-  depi <- VUM.read (dsDepths ds) rooti
-  depj <- VUM.read (dsDepths ds) rootj
-  if
-    | depi == depj -> VUM.modify (dsDepths ds) (+ 1) rooti >>
-    VUM.write (dsParents ds) rootj rooti
-    | depi > depj -> VUM.write (dsParents ds) rootj rooti
-    | otherwise  -> VUM.write (dsParents ds) rooti rootj
 
 ----------------------------
 -- Monadic Priority Queue --
