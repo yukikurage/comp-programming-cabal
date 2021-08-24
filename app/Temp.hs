@@ -150,7 +150,8 @@ instance ReadBS a => ReadBS [a] where
 
 instance (ReadBS a, ReadBS b) => ReadBS (a, b) where
   readBS (BS.words -> [a, b]) = (readBS a, readBS b)
-  readBS _                    = error "Invalid Format :: readBS :: BS -> (a, b)"
+  readBS _
+    = error "Invalid Format :: readBS :: BS -> (a, b)"
 
 instance (ReadBS a, ReadBS b, ReadBS c) => ReadBS (a, b, c) where
   readBS (BS.words -> [a, b, c]) = (readBS a, readBS b, readBS c)
@@ -240,6 +241,9 @@ instance (ReadBS a, VU.Unboxable a) => ReadBSLines (VU.Vector a) where
 instance ReadBS a => ReadBSLines (V.Vector a) where
   readBSLines = readVecLines
 
+instance ReadBSLines BS.ByteString where
+  readBSLines = id
+
 instance ShowBS a => ShowBSLines [a] where
   showBSLines = BS.unwords . map showBS
 
@@ -248,6 +252,9 @@ instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
 
 instance ShowBS a => ShowBSLines (V.Vector a) where
   showBSLines = showVecLines
+
+instance ShowBSLines BS.ByteString where
+  showBSLines = id
 
 readVecLines :: (VG.Vector v a, ReadBS a) => BS.ByteString -> v a
 readVecLines = VG.fromList . readBS
@@ -281,7 +288,8 @@ instance (TypeNats.KnownNat p, Integral a) => Num (Mod a p) where
 
 instance (TypeNats.KnownNat p, Integral a) => Fractional (Mod a p) where
   recip (ModInt n)
-    | gcd n p /= 1 = error "recip :: Mod a p -> Mod a p : The inverse element does not exist."
+    | gcd n p /= 1 =
+      error "recip :: Mod a p -> Mod a p : The inverse element does not exist."
     | otherwise = ModInt . fst $ extendedEuc n (-p)
     where
     p = fromIntegral $
@@ -422,18 +430,30 @@ mpsqNull q = PSQueue.null <$>  MutVar.readMutVar q
 mpsqEmpty :: Prim.PrimMonad m => m (MPSQueue (Prim.PrimState m) p v)
 mpsqEmpty = MutVar.newMutVar PSQueue.empty
 
-mpsqSingleton :: Prim.PrimMonad m => Ord p => Int -> p -> v -> m (MPSQueue (Prim.PrimState m) p v)
+mpsqSingleton ::
+  Prim.PrimMonad m
+  => Ord p
+  => Int -> p -> v -> m (MPSQueue (Prim.PrimState m) p v)
 mpsqSingleton k p v = MutVar.newMutVar $ PSQueue.singleton k p v
 
-mpsqInsert :: Prim.PrimMonad m => Ord p => Int -> p -> v -> MPSQueue (Prim.PrimState m) p v -> m ()
+mpsqInsert ::
+  Prim.PrimMonad m
+  => Ord p
+  => Int -> p -> v -> MPSQueue (Prim.PrimState m) p v -> m ()
 mpsqInsert k p v = flip MutVar.modifyMutVar' (PSQueue.insert k p v)
 
 -- | 要素は削除せず，優先度が一番小さいものを取り出す
-mpsqFindMin :: Prim.PrimMonad m => Ord p => MPSQueue (Prim.PrimState m) p v -> m (Maybe (Int, p, v))
+mpsqFindMin ::
+  Prim.PrimMonad m
+  => Ord p
+  => MPSQueue (Prim.PrimState m) p v -> m (Maybe (Int, p, v))
 mpsqFindMin q = PSQueue.findMin <$> MutVar.readMutVar q
 
 -- | 要素を削除して，優先度が一番小さいものを取り出す
-mpsqMinView :: Prim.PrimMonad m => Ord p => MPSQueue (Prim.PrimState m) p v -> m (Maybe (Int, p, v))
+mpsqMinView ::
+  Prim.PrimMonad m
+  => Ord p
+  => MPSQueue (Prim.PrimState m) p v -> m (Maybe (Int, p, v))
 mpsqMinView q = do
   res <- PSQueue.minView <$> MutVar.readMutVar q
   case res of
@@ -464,7 +484,8 @@ gReverse g = ST.runST do
   let
     n = V.length g
   v <- VM.replicate n []
-  V.forM_ [0 .. n - 1] \i -> M.forM_ (g ! i) \(j, a) -> VM.modify v ((i, a) :) j
+  V.forM_ [0 .. n - 1] \i -> M.forM_ (g ! i) \(j, a)
+    -> VM.modify v ((i, a) :) j
   V.freeze v
 
 dijkstra :: Graph Int -> Int -> V.Vector (Inf Int)
@@ -530,8 +551,19 @@ mzWidth = (+1) . snd . snd . AU.bounds
 
 type Rules a = Char -> Char -> Maybe a
 
+readMaze :: BS.ByteString  -> Maze
+readMaze str = AU.listArray ((0, 0), (h - 1, w - 1))
+  $ concatMap (BS.unpack . BS.take w) strs
+  where
+  strs = BS.lines str
+  h = length strs
+  w = minimum $ map BS.length strs
+
+getMaze :: Int -> IO Maze
+getMaze h = readMaze <$> getLines h
+
 mazeToGraph :: VUM.Unboxable a => Rules a -> Maze -> Graph a
-mazeToGraph rules maze = gFromEdges (h * w) . VU.fromList $
+mazeToGraph rules maze = gFromEdges (h * w) $ VU.fromList $
   Maybe.catMaybes $
   [edge |
   i <- [0 .. h - 1],
@@ -595,7 +627,8 @@ primes n
     VUM.write v 1 False
     VU.forM_ [2 .. floor . sqrt @Double . fromIntegral $ n] \i -> do
       frag <- VUM.read v i
-      M.when frag $ VU.forM_ [2 * i, 3 * i .. fromIntegral n] \j -> VUM.write v j False
+      M.when frag $ VU.forM_ [2 * i, 3 * i .. fromIntegral n] \j
+        -> VUM.write v j False
     return v
 
 -- | 拡張されたユークリッドの互除法
