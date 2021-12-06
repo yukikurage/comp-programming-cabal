@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,6 +80,15 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  s <- get @BS.ByteString
+  let
+    patterns = V.map f [0 .. BS.length s - 1]
+    f i = snd t <> fst t
+      where
+      t = BS.splitAt i s
+    xs = V.modify VAM.sort patterns
+  print $ xs ! 0
+  print $ V.last xs
   return ()
 
 -------------
@@ -245,7 +254,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,7 +80,19 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  [n, d] <- get @[Int]
+  print $ solve d n
   return ()
+
+solve :: Int -> Int -> Mod Int 998244353
+solve _ 1 = 0
+solve d n = 2 * solve d (n - 1) + 2 * (if
+  | d <= 1           -> 0
+  | d <= n           -> fromIntegral (d - 1) * 2 ^ (d - 2)
+  | d <= 2 * (n - 1) -> fromIntegral (2 * n - d - 1) * 2 ^ (d - 2)
+  | otherwise        -> 0)
+  + 2 * if d <= n - 1 then 2 * 2 ^ (d - 1) else 0
+
 
 -------------
 -- Library --
@@ -245,7 +257,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

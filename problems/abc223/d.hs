@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,6 +80,32 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  [n, m] <- get @[Int]
+  xs <- getLines @(VU.Vector (Int, Int)) m
+  let
+    edges = VU.map (\(i, j) -> (i - 1, j - 1, ())) xs
+    g = gFromEdges n edges
+    rg = gReverse g
+  v <- V.thaw $ V.map length $ rg
+  q <- mpsqEmpty
+  ans <- IORef.newIORef []
+  VU.forM_ [0 .. n - 1] \i ->
+    M.when (null (rg ! i)) $ mpsqInsert i i i q
+  while do
+    res <- mpsqMinView q
+    case res of
+      Just (_, _, node) -> do
+        IORef.modifyIORef' ans ((node + 1):)
+        M.forM_ (g ! node) \(i, _) -> do
+          VM.modify v (+ -1) $ i
+          x <- VM.read v i
+          M.when (x == 0) $ mpsqInsert i i i q
+        pure True
+      Nothing        -> pure False
+  answer <- IORef.readIORef ans
+  if length answer == n
+    then print $ VU.reverse $ VU.fromList answer
+    else print (-1 :: Int)
   return ()
 
 -------------
@@ -245,7 +271,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines
@@ -535,6 +561,7 @@ dfs g i = ST.runST do
       childs <- M.mapM loop nexts
       return $ Tree.Node now childs
   loop i
+
 
 ----------
 -- Maze --

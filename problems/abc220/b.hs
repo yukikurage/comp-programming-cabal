@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,7 +80,14 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  k <- get @Int
+  [a, b] <- map (L.reverse . map Char.digitToInt . BS.unpack) <$> (get @[BS.ByteString])
+  print $ toBaseTen k a * toBaseTen k b
   return ()
+
+toBaseTen :: Int -> [Int] -> Int
+toBaseTen _ []       = 0
+toBaseTen k (x : xs) = toBaseTen k xs * k + x
 
 -------------
 -- Library --
@@ -245,7 +252,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

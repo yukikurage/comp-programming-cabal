@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,7 +80,29 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  _ <- get @Int
+  as <- get @(VU.Vector Int)
+  VU.forM_ [0 .. 9] \k -> print $ (solve as) ! k
   return ()
+
+solve :: VU.Vector Int -> VU.Vector Int
+solve as
+  | VU.length as == 1 = VU.generate 10 \x -> if VU.head as == x then 1 else 0
+  | otherwise = ST.runST do
+      v <- VUM.replicate 10 0
+      VU.forM_ [0 .. 9] \i -> do
+        let
+          x = table ! i
+          fRes = f i a
+          gRes = g i a
+        VUM.modify v ((`mod` 998244353) . (+ x)) fRes
+        VUM.modify v ((`mod` 998244353) . (+ x)) gRes
+      VU.freeze v
+    where
+    a = VU.last as
+    table = solve $ VU.init as
+    f x y = (x + y) `mod` 10
+    g x y = (x * y) `mod` 10
 
 -------------
 -- Library --
@@ -245,7 +267,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

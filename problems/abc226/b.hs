@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,6 +80,12 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  n <- get @Int
+  xs <- getLines @[VU.Vector Int] n
+  let
+    ys = map VU.tail xs
+    s = Set.fromList ys
+  print $ Set.size $ s
   return ()
 
 -------------
@@ -245,7 +251,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

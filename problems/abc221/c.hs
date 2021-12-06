@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,6 +80,17 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  xs <- VU.fromList . map Char.digitToInt . BS.unpack <$> get @BS.ByteString
+  let
+    len = VU.length xs
+    vToInt ys
+      | VU.null ys = 0
+      | otherwise  = VU.head ys + 10 * vToInt (VU.tail ys)
+    ans = V.maximum $ V.map (\table -> let
+      ys = vToInt $ VU.modify VAM.sort $ VU.map (xs !) $ VU.filter (table !) $ [0 .. len - 1]
+      zs = vToInt $ VU.modify VAM.sort $ VU.map (xs !) $ VU.filter (not . (table !)) $ [0 .. len - 1]
+      in ys * zs) $ V.replicateM len [True, False]
+  print ans
   return ()
 
 -------------
@@ -245,7 +256,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,8 +80,18 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
-  return ()
-
+  x <- get @BS.ByteString
+  let
+    revert = AU.listArray @AU.Array ('a', 'z') $ BS.unpack x
+    trans = AST.runSTUArray do
+      a <- AST.newArray_ ('a', 'z')
+      VU.forM_ ['a' .. 'z'] \c -> AST.writeArray a (revert AU.! c) c
+      return a
+  n <- get @Int
+  s <- getLines @(V.Vector BS.ByteString) n
+  let
+    ans =  V.map (BS.map (revert AU.!)) $ V.modify VAM.sort $ V.map (BS.map (trans AU.!)) s
+  V.forM_ ans print
 -------------
 -- Library --
 -------------
@@ -245,7 +255,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

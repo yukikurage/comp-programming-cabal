@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,6 +80,23 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  n <- get @Int
+  xs <- getLines @(VU.Vector (Int, Int)) n
+  let
+    moves = VU.modify (VAM.sortBy (\(x, _) (y, _) -> compare x y)) $ VU.map ((,1 :: Int) . fst) xs VU.++ VU.map (\(a, b) -> (,-1) $ a + b) xs
+    ans = ST.runST do
+      v <- VUM.replicate (n + 1) (0 :: Int)
+      k <- STRef.newSTRef 0
+      p <- STRef.newSTRef 0
+      VU.forM_ [0 .. 2 * n - 1] \i -> do
+        cnt <- STRef.readSTRef k
+        prev <- STRef.readSTRef p
+        VUM.modify v (+ (fst (moves ! i) - prev)) cnt
+
+        STRef.modifySTRef' k (+ snd (moves ! i))
+        STRef.writeSTRef p $ fst $ moves ! i
+      VU.freeze v
+  print $ VU.tail ans
   return ()
 
 -------------
@@ -245,7 +262,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

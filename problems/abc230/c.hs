@@ -80,7 +80,14 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
-  return ()
+  [_, a, b] <- get @[Int]
+  [p, q, r, s] <- get @[Int]
+  let
+    ans = V.generate (q - p + 1) \x -> V.generate (s - r + 1) \y -> f (p + x, r + y)
+    f (x, y) = y == b - a + x || y == b + a - x
+  M.forM_ ans \line -> do
+    M.forM_ line \frag -> putStr if frag then "#" else "."
+    putStrLn ""
 
 -------------
 -- Library --
@@ -245,7 +252,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

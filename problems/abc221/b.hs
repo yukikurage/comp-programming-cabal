@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,6 +80,15 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  s <- get @BS.ByteString
+  t <- get @BS.ByteString
+  let
+    ans = VU.find (\i -> t == BS.pack (map (\j -> if
+      | j == i     -> BS.index s $ i + 1
+      | j == i + 1 -> BS.index s $ i
+      | otherwise  -> BS.index s j
+      ) [0 .. BS.length s - 1])) [0 .. BS.length s - 2]
+  putStrLn $ if Maybe.isJust ans || s == t then "Yes" else "No"
   return ()
 
 -------------
@@ -245,7 +254,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

@@ -80,7 +80,20 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
-  return ()
+  n :: Double <- fromIntegral <$> get @Int
+  let
+    leftMax :: Int = floor $ sqrt n
+    left :: Int = sum $ flip map [1 .. leftMax] \x ->
+      floor $ n / fromIntegral x
+
+    rightMax = floor (n / fromIntegral leftMax) - 1
+    right = sum $ flip map [1 .. rightMax] \x ->
+      x * (floor (n / fromIntegral x) - floor (n / (fromIntegral x + 1)))
+
+  print $ right + left
+
+-- test :: Int -> Int
+-- test n = VU.sum $ VU.generate n \x -> floor $ fromIntegral n / fromIntegral (x + 1)
 
 -------------
 -- Library --
@@ -245,7 +258,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

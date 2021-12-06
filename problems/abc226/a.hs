@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,6 +80,11 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  x <- get @BS.ByteString
+  let y = read $ BS.unpack $ BS.take (BS.length x - 4) x :: Int
+  print $ if (read [BS.index x (BS.length x - 3)] :: Int) >= 5
+    then y + 1
+    else y
   return ()
 
 -------------
@@ -245,7 +250,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -80,7 +80,37 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  n <- get @Int
+  [x, y] <- get @[Int]
+  items <- getLines @(V.Vector (Int, Int)) n
+  let
+    f (0, 0) = 0
+    f _      = infinity @Int
+    init = A.listArray @A.Array ((0, 0), (x, y)) $ map f $ A.range ((0, 0),(x, y))
+    fields = V.scanl' (\field item -> evolve item field) init items
+    ans = V.minimum $ V.zipWith minItemNum items $ V.init fields
+
+  print $ (case fromInf ans of
+    Infinity -> -1
+    Finity i -> i)
   return ()
+
+evolve :: (Int, Int) -> A.Array (Int, Int) (Inf Int) -> A.Array (Int, Int) (Inf Int)
+evolve (tako, tai) field = A.listArray @A.Array rng $ map f $ A.range rng
+  where
+    rng = ((0, 0), (x, y))
+    (_, (x, y)) = A.bounds field
+    f (i, j) = min (field A.! (i, j)) if A.inRange rng (i - tako, j - tai)
+      then field A.! (i - tako, j - tai) + 1
+      else infinity
+
+minItemNum :: (Int, Int) -> A.Array (Int, Int) (Inf Int) -> Inf Int
+minItemNum (tako, tai) field = (1 +) $ L.minimum $ map f $ A.range rng
+  where
+    rng = ((0, 0), (x, y))
+    (_, (x, y)) = A.bounds field
+    f (i, j) | i >= x - tako && j >= y - tai = field A.! (i, j)
+    f _ = infinity
 
 -------------
 -- Library --
@@ -245,7 +275,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

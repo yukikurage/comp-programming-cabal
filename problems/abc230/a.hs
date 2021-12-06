@@ -80,6 +80,12 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  n <- get @Int
+  let
+    f x = replicate (3 - length str ) '0' ++ str
+      where
+      str = show x
+  putStrLn $ "AGC" ++ f if n >= 42 then n + 1 else n
   return ()
 
 -------------
@@ -245,7 +251,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

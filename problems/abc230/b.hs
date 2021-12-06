@@ -80,7 +80,14 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  s <- get @BS.ByteString
+  putStrLn $ if f "oxx" s || f "xox" s || f "xxo" s then "Yes" else "No"
   return ()
+
+f b s | len <= 2 = BS.take len b == s
+  where
+  len = BS.length s
+f b s = BS.take 3 s == b && f b (BS.drop 3 s)
 
 -------------
 -- Library --
@@ -245,7 +252,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

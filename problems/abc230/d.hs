@@ -80,6 +80,18 @@ import           Prelude                       hiding (print, (!!))
 
 main :: IO ()
 main = do
+  [n, d] <- get @[Int]
+  walls <- getLines @(VU.Vector (Int, Int)) n
+  let
+    sorted = VU.modify (VAM.sortBy (\(_, r1) (_, r2) -> compare r1 r2)) walls
+    solve 0 = (0, -1) -- num, right
+    solve i = res
+      where
+      (num :: Int, right) = solve (i - 1)
+      res = if fst (sorted ! (i - 1)) <= right
+        then (num, right)
+        else (num + 1, snd (sorted ! (i - 1)) + d - 1)
+  print $ fst $ solve n
   return ()
 
 -------------
@@ -245,7 +257,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines

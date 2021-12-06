@@ -72,7 +72,7 @@ import qualified Data.Vector.Unboxing          as VU
 import qualified Data.Vector.Unboxing.Mutable  as VUM
 import qualified Debug.Trace                   as Trace
 import qualified GHC.TypeNats                  as TypeNats
-import           Prelude                       hiding (print, (!!))
+import           Prelude                       hiding (print)
 
 ----------
 -- Main --
@@ -81,6 +81,36 @@ import           Prelude                       hiding (print, (!!))
 main :: IO ()
 main = do
   return ()
+
+facts :: V.Vector (Mod Int 998244353)
+facts = V.generate 50 \i -> fact i
+  where
+  fact 0 = 1
+  fact i = fact (i - 1) * fromIntegral i
+
+revFacts :: V.Vector (Mod Int 998244353)
+revFacts = V.map (1 / ) facts
+
+scoreDiv :: Int -> Int -> [Map.Map Int Int]
+scoreDiv n score = map (Map.alter plus1 score . Map.delete 0) $ loop (n - score)
+  where
+  plus1 Nothing  = Just 1
+  plus1 (Just x) = Just $ x + 1
+  loop :: Int -> [Map.Map Int Int]
+  loop 0 = [Map.singleton 0 0]
+  loop x | x < 1 = []
+  loop x =
+    concatMap (\y -> map (Map.alter plus1 y) $ loop (x - y)) ([1 .. x] :: [Int])
+
+c :: Int -> Int -> Mod Int 998244353
+c x y = facts ! x * (revFacts ! y) * (revFacts ! (x - y))
+
+scoreCount :: Int -> Int -> Mod Int 998244353
+scoreCount n score = sum $ map f $ dived
+  where
+  dived = scoreDiv n score
+  f :: Map.Map Int Int -> Mod Int 998244353
+  f mp = foldr (\(k, v) acc -> fromIntegral (acc `c` k) / v) n $ Map.toList mp
 
 -------------
 -- Library --
@@ -245,7 +275,7 @@ instance ReadBSLines BS.ByteString where
   readBSLines = id
 
 instance ShowBS a => ShowBSLines [a] where
-  showBSLines = BS.unlines . map showBS
+  showBSLines = BS.unwords . map showBS
 
 instance (ShowBS a, VU.Unboxable a) => ShowBSLines (VU.Vector a) where
   showBSLines = showVecLines
